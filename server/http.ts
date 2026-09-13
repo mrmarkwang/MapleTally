@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { sessionClient } from "../src/lib/supabase/server";
-import { adminClient, checked, listAll, rpc, type Row } from "./supabase";
+import { adminClient, checked, listAll, rpc } from "./supabase";
 import { fieldsSchema, warnings, duplicateKey, HttpError } from "./domain";
 import { Storage, equal, digest, cleanupStorage } from "./storage";
 import { completeUpload, view } from "./receipts";
