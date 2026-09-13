@@ -1,6 +1,6 @@
 /** Receipt contract and deterministic checks. Amounts use integer cents; AI never approves. */
 import { z } from "zod";
-export const amount = z
+const amount = z
   .number()
   .int()
   .min(-100_000_000)
@@ -36,14 +36,6 @@ export const emptyFields = (): Fields => ({
   currency: "CAD",
   category: "Uncategorized",
 });
-export type ReceiptState =
-  | "captured"
-  | "processing"
-  | "needs_review"
-  | "approved"
-  | "failed"
-  | "duplicate_candidate"
-  | "exported";
 export function warnings(
   f: Fields,
   confidence: Record<string, number> = {},
