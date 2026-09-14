@@ -1,5 +1,5 @@
 "use client";
-/** Responsive Supabase workspace with direct uploads, queued exports, and visibility-aware polling. */
+/** Responsive workspace with live extraction updates, direct uploads, and queued exports. */
 import React, { useEffect, useRef, useState } from "react";
 type Fields = {
   merchant: string;
@@ -354,6 +354,10 @@ export default function App() {
     ]);
     setMe(m);
     setRows(r);
+    setSelected((current) => {
+      if (!current) return current;
+      return r.find((row) => row.id === current.id) || current;
+    });
     setExportJobs(e);
     setSetupError("");
   }
@@ -629,6 +633,7 @@ export default function App() {
             <Review
               key={selected.id}
               receipt={selected}
+              extractionAvailable={me.extractionAvailable}
               onClose={() => {
                 setSelected(null);
                 void refresh();
@@ -1033,27 +1038,51 @@ export default function App() {
 }
 function Review({
   receipt,
+  extractionAvailable,
   onClose,
   onSaved,
   onDelete,
 }: {
   receipt: Receipt;
+  extractionAvailable: boolean;
   onClose: () => void;
   onSaved: (r: Receipt) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
   const [fields, setFields] = useState<Fields>(receipt.fields);
+  const editedFields = useRef(new Set<keyof Fields>());
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [ack, setAck] = useState(false);
   const [deleting, setDeleting] = useState(false);
   useEffect(() => {
+    setFields((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const key of Object.keys(receipt.fields) as (keyof Fields)[]) {
+        if (
+          !editedFields.current.has(key) &&
+          current[key] !== receipt.fields[key]
+        ) {
+          (next as Record<keyof Fields, Fields[keyof Fields]>)[key] =
+            receipt.fields[key];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [receipt.fields]);
+  useEffect(() => {
     api<{ url: string }>(`/receipts/${receipt.id}/link`)
       .then((r) => setUrl(r.url))
       .catch((e) => setError(e.message));
   }, [receipt.id]);
   const dirty = JSON.stringify(fields) !== JSON.stringify(receipt.fields);
+  function setField<K extends keyof Fields>(key: K, value: Fields[K]) {
+    editedFields.current.add(key);
+    setFields((current) => ({ ...current, [key]: value }));
+  }
   async function action(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -1071,6 +1100,7 @@ function Review({
         fields,
         version: receipt.version,
       });
+      editedFields.current.clear();
       setFields(r.fields);
       await onSaved(r);
     });
@@ -1149,9 +1179,10 @@ function Review({
             </div>
           )}
           {["captured", "processing"].includes(receipt.state) && (
-            <div className="notice">
-              Extraction is queued or running. You can enter details manually
-              now, or reopen this receipt shortly to see the result.
+            <div className={`notice${extractionAvailable ? "" : " warning"}`}>
+              {extractionAvailable
+                ? "Extraction is queued or running. The details will update here automatically; you can also enter them manually now."
+                : "Automatic extraction is not configured. Add the OpenAI API key to the deployment, or enter the details manually."}
             </div>
           )}
           <form
@@ -1166,9 +1197,7 @@ function Review({
                 required
                 value={fields.merchant}
                 maxLength={200}
-                onChange={(e) =>
-                  setFields({ ...fields, merchant: e.target.value })
-                }
+                onChange={(e) => setField("merchant", e.target.value)}
                 placeholder="Business on the receipt"
               />
             </label>
@@ -1179,9 +1208,7 @@ function Review({
                   type="date"
                   required
                   value={fields.date}
-                  onChange={(e) =>
-                    setFields({ ...fields, date: e.target.value })
-                  }
+                  onChange={(e) => setField("date", e.target.value)}
                 />
               </label>
               <label>
@@ -1192,10 +1219,7 @@ function Review({
                   maxLength={3}
                   value={fields.currency}
                   onChange={(e) =>
-                    setFields({
-                      ...fields,
-                      currency: e.target.value.toUpperCase(),
-                    })
+                    setField("currency", e.target.value.toUpperCase())
                   }
                 />
               </label>
@@ -1206,9 +1230,7 @@ function Review({
                 list="categories"
                 value={fields.category}
                 maxLength={80}
-                onChange={(e) =>
-                  setFields({ ...fields, category: e.target.value })
-                }
+                onChange={(e) => setField("category", e.target.value)}
               />
               <datalist id="categories">
                 {[
@@ -1246,13 +1268,12 @@ function Review({
                       value={fields[k] === null ? "" : fields[k]! / 100}
                       placeholder="Unknown"
                       onChange={(e) =>
-                        setFields({
-                          ...fields,
-                          [k]:
-                            e.target.value === ""
-                              ? null
-                              : Math.round(Number(e.target.value) * 100),
-                        })
+                        setField(
+                          k,
+                          e.target.value === ""
+                            ? null
+                            : Math.round(Number(e.target.value) * 100),
+                        )
                       }
                     />
                   </div>

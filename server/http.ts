@@ -1,5 +1,5 @@
-/** Next route dispatcher with verified identities, idempotent cleanup, webhooks, and worker auth. */
-import { NextRequest, NextResponse } from "next/server";
+/** Next route dispatcher with post-upload worker kicks, verified identities, and fenced jobs. */
+import { after, NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { sessionClient } from "../src/lib/supabase/server";
@@ -40,6 +40,16 @@ function json(value: unknown, status = 200) {
   return NextResponse.json(value, {
     status,
     headers: { "Cache-Control": "no-store" },
+  });
+}
+function kickWorker(db: ReturnType<typeof adminClient>) {
+  after(async () => {
+    await runJob(db).catch((error) =>
+      console.error(
+        "Post-request worker failed:",
+        error instanceof Error ? error.message : "Unknown error",
+      ),
+    );
   });
 }
 async function removeFolder(
@@ -366,8 +376,11 @@ async function dispatch(req: NextRequest): Promise<Response> {
     return json({ id: u.id, url }, 201);
   }
   const upload = path.match(/^\/uploads\/([^/]+)(?:\/(complete))?$/);
-  if (upload && method === "POST" && upload[2])
-    return json(await completeUpload(db, w.id, uuid(upload[1])));
+  if (upload && method === "POST" && upload[2]) {
+    const result = await completeUpload(db, w.id, uuid(upload[1]));
+    if (!result.duplicate) kickWorker(db);
+    return json(result);
+  }
   if (upload && method === "DELETE") {
     const id = uuid(upload[1]);
     await rpc(db, "cancel_upload", { w: w.id, upload_id: id });
@@ -437,6 +450,7 @@ async function dispatch(req: NextRequest): Promise<Response> {
     }
     if (method === "POST" && match[2] === "retry") {
       await rpc(db, "retry_receipt", { w: w.id, receipt: r.id });
+      kickWorker(db);
       return json({ ok: true });
     }
     if (method === "DELETE" && !match[2]) {

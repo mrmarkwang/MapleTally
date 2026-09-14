@@ -31,7 +31,7 @@ Set these variables in local development and in every applicable Vercel environm
 | `SUPABASE_SECRET_KEY`                  | Yes               | Server-only secret/service-role key for privileged database, Auth, and Storage operations. Never expose it with a `NEXT_PUBLIC_` prefix. |
 | `APP_ORIGIN`                           | Yes in deployment | Canonical HTTPS origin used for Auth redirects, origin checks, Stripe redirects, and portal returns.                                     |
 | `CRON_SECRET`                          | Yes               | Bearer token required by `GET /api/jobs/run`. Vercel sends it automatically for cron requests.                                           |
-| `OPENAI_API_KEY`                       | Optional          | Enables automatic receipt extraction. Without it, uploads remain available for manual entry.                                             |
+| `OPENAI_API_KEY`                       | Optional          | Enables automatic receipt extraction. Without it, the review screen explains that manual entry is required.                              |
 | `OPENAI_MODEL`                         | Optional          | Responses API model; defaults to `gpt-4.1-mini`.                                                                                         |
 | `STRIPE_SECRET_KEY`                    | Optional as a set | Enables checkout, portal, and cancellation with the other Stripe variables.                                                              |
 | `STRIPE_PRICE_ID`                      | Optional as a set | Recurring web subscription price.                                                                                                        |
@@ -66,7 +66,7 @@ Configure a Mailgun route for the receiving domain that stores the message and n
 
 ## Queue operations
 
-Receipt extraction, exports, and forwarded email use rows in `public.jobs`. Each cron invocation claims up to two ready jobs with `FOR UPDATE SKIP LOCKED`. A claim receives a fencing token and a 10-minute lease; completion with a stale token is ignored. Transient failures retry with exponential minute delays, and jobs become visibly failed after three worker attempts. A user may retry a failed receipt, up to the receipt attempt limit, or enter fields manually.
+Receipt extraction, exports, and forwarded email use rows in `public.jobs`. Completing a direct upload schedules a post-response worker run so extraction can start immediately; the cron remains the durable recovery path and claims up to two ready jobs per invocation with `FOR UPDATE SKIP LOCKED`. A claim receives a fencing token and a 10-minute lease; completion with a stale token is ignored. Transient failures retry with exponential minute delays, and jobs become visibly failed after three worker attempts. A user may retry a failed receipt, up to the receipt attempt limit, or enter fields manually.
 
 Use Vercel function logs and these tables to investigate incidents:
 

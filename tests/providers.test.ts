@@ -1,11 +1,11 @@
-/** Binary validation, idempotent ingestion, and provider trust boundaries. */
+/** Binary validation, extraction worker, idempotent ingestion, and provider trust boundaries. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateFile, sign } from "../server/storage";
-import { Mailer } from "../server/providers";
-import { mailgunUrl } from "../server/worker";
+import { Mailer, OpenAIExtractor, type Extractor } from "../server/providers";
+import { mailgunUrl, runJob } from "../server/worker";
 import { completeUpload } from "../server/receipts";
 test("upload validation inspects actual bytes and enforces size limits", async () => {
   const image = await sharp({
@@ -54,6 +54,98 @@ test("Mailgun signatures expire and stored attachments cannot redirect credentia
   assert.equal(
     mailgunUrl("https://storage-us-east4.api.mailgun.net/v3/message").hostname,
     "storage-us-east4.api.mailgun.net",
+  );
+});
+test("receipt worker persists extracted fields and metadata", async () => {
+  const fields = {
+    merchant: "The Home Depot",
+    date: "2026-09-12",
+    subtotal: 1125,
+    tax: 146,
+    tip: null,
+    total: 1271,
+    currency: "CAD",
+    category: "Office supplies",
+  };
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const db = {
+    rpc: async (name: string, args: Record<string, unknown> = {}) => {
+      calls.push({ name, args });
+      if (name === "claim_job")
+        return {
+          data: {
+            id: "job-id",
+            kind: "receipt",
+            target: "receipt-id",
+            workspace_id: "workspace-id",
+            lease_token: "lease-token",
+          },
+          error: null,
+        };
+      if (name === "complete_receipt_job")
+        return { data: true, error: null };
+      throw new Error(`Unexpected RPC ${name}`);
+    },
+    from(table: string) {
+      assert.equal(table, "receipts");
+      const query = {
+        select: () => query,
+        eq: () => query,
+        single: async () => ({
+          data: {
+            id: "receipt-id",
+            object_key: "private/original",
+            mime: "image/jpeg",
+          },
+          error: null,
+        }),
+      };
+      return query;
+    },
+    storage: {
+      from(bucket: string) {
+        assert.equal(bucket, "receipts");
+        return {
+          download: async (key: string) => {
+            assert.equal(key, "private/original");
+            return { data: new Blob(["receipt"]), error: null };
+          },
+        };
+      },
+    },
+  } as unknown as SupabaseClient;
+  const extractor: Extractor = {
+    extract: async (data, mime) => {
+      assert.equal(data.toString(), "receipt");
+      assert.equal(mime, "image/jpeg");
+      return {
+        fields,
+        confidence: { merchant: 0.99, total: 0.98 },
+        raw: { id: "response-id" },
+        usage: { input_tokens: 42 },
+      };
+    },
+  };
+  assert.deepEqual(await runJob(db, extractor), {
+    processed: true,
+    kind: "receipt",
+  });
+  const completed = calls.find((call) => call.name === "complete_receipt_job");
+  assert.deepEqual(completed?.args.extracted, fields);
+  assert.deepEqual(completed?.args.confidence, {
+    merchant: 0.99,
+    total: 0.98,
+  });
+  assert.deepEqual(completed?.args.raw, { id: "response-id" });
+  assert.deepEqual(completed?.args.usage, { input_tokens: 42 });
+});
+test("missing extraction configuration fails before receipt processing", async () => {
+  await assert.rejects(
+    new OpenAIExtractor("", "gpt-4.1-mini").extract(
+      Buffer.from("receipt"),
+      "image/jpeg",
+    ),
+    /not configured/,
   );
 });
 test("lost finalization responses preserve and reconcile committed originals", async () => {
