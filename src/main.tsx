@@ -43,6 +43,17 @@ type Me = {
   notifications: { id: string; message: string }[];
 };
 type Page = "Receipts" | "Exports" | "Settings";
+const APPROVED_STATES = new Set(["approved", "exported"]);
+const REVIEW_READY_STATES = new Set(["needs_review", "duplicate_candidate"]);
+const IN_PROGRESS_STATES = new Set(["captured", "processing"]);
+
+function isApproved(receipt: Receipt) {
+  return APPROVED_STATES.has(receipt.state);
+}
+
+function isReviewReady(receipt: Receipt) {
+  return REVIEW_READY_STATES.has(receipt.state);
+}
 async function api<T = any>(
   url: string,
   method = "GET",
@@ -499,12 +510,10 @@ export default function App() {
       </div>
     );
   if (!me) return <Auth onLogin={refresh} />;
-  const needsReview = rows.filter(
-    (r) => !["approved", "exported"].includes(r.state),
-  );
-  const approved = rows.filter((r) =>
-    ["approved", "exported"].includes(r.state),
-  );
+  const needsReview = rows.filter(isReviewReady);
+  const approved = rows.filter(isApproved);
+  const inProgress = rows.filter((r) => IN_PROGRESS_STATES.has(r.state));
+  const failed = rows.filter((r) => r.state === "failed");
   const totalCad = approved
     .filter((r) => r.fields.currency === "CAD")
     .reduce((sum, r) => sum + (r.fields.total || 0), 0);
@@ -512,8 +521,8 @@ export default function App() {
     (r) =>
       (filter === "all" ||
         (filter === "review"
-          ? !["approved", "exported"].includes(r.state)
-          : ["approved", "exported"].includes(r.state))) &&
+          ? isReviewReady(r) || r.state === "failed"
+          : isApproved(r))) &&
       `${r.fields.merchant} ${r.filename} ${r.fields.category}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -769,7 +778,7 @@ export default function App() {
                   <div className="tabs">
                     {[
                       ["all", "All receipts"],
-                      ["review", "To review"],
+                      ["review", "Needs attention"],
                       ["approved", "Approved"],
                     ].map(([key, label]) => (
                       <button
@@ -905,7 +914,8 @@ export default function App() {
                 <Icon name="receipts" />
                 <span>
                   {rows.length} receipts · {approved.length} approved ·{" "}
-                  {needsReview.length} awaiting review. Exports include all
+                  {needsReview.length} ready for review · {inProgress.length}{" "}
+                  processing · {failed.length} failed. Exports include all
                   records, with approval status clearly labelled.
                 </span>
               </div>

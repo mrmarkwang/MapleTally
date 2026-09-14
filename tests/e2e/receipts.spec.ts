@@ -46,8 +46,15 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   const bytes = await sharp(Buffer.from('<svg width="420" height="650" xmlns="http://www.w3.org/2000/svg"><rect width="420" height="650" fill="#fffdf8"/><g fill="#333" font-family="sans-serif"><text x="80" y="80" font-size="28">MAPLE CAFE</text><text x="80" y="140" font-size="18">September 12, 2026</text><text x="60" y="250" font-size="20">Subtotal             $10.00</text><text x="60" y="300" font-size="20">HST                     $1.30</text><text x="60" y="350" font-size="20">Tip                       $2.00</text><text x="60" y="430" font-size="24">TOTAL CAD      $13.30</text></g></svg>')).png().toBuffer();
   await page.locator('input[type=file]').first().setInputFiles({ name: 'cafe.png', mimeType: 'image/png', buffer: bytes });
   await expect(page.getByRole('heading', { name: 'Review receipt', exact: true })).toBeVisible();
+  if (info.project.name === 'mobile') {
+    const detailsBox = await page.locator('.review-fields').boundingBox();
+    const originalBox = await page.locator('.original-panel').boundingBox();
+    expect(detailsBox!.y).toBeLessThan(originalBox!.y);
+  }
   await page.getByRole('button', { name: 'Back to receipts' }).click();
   await expect(page.getByRole('button', { name: /cafe.png/ })).toContainText('failed', { timeout: 15000 });
+  await expect(page.locator('.stats > div').filter({hasText:'Ready for review'})).toContainText('0');
+  await expect(page.getByRole('button', {name:'Needs attention'})).toBeVisible();
   await page.getByRole('button', { name: /cafe.png/ }).click();
   await expect(page.getByText('Automatic extraction is not configured.', { exact: false })).toBeVisible();
   await page.getByLabel('Merchant', { exact: true }).fill('Maple Café');
