@@ -462,10 +462,6 @@ form .button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.workspace-card small {
-  font-size: 10px;
-  color: #8c9387;
-}
 nav {
   display: flex;
   flex-direction: column;
@@ -491,13 +487,6 @@ nav button.active {
 }
 nav button:hover {
   background: #e9eee1;
-}
-.nav-count {
-  font-size: 10px;
-  padding: 0 6px;
-  background: #d5dfc8;
-  border-radius: 4px;
-  margin-left: auto;
 }
 .sidebar-bottom {
   margin-top: auto;

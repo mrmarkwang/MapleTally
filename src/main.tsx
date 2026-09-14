@@ -616,7 +616,6 @@ export default function App() {
           </span>
           <div>
             <strong>{me.workspace.name}</strong>
-            <small>Business workspace</small>
           </div>
         </div>
         <nav>
@@ -632,9 +631,6 @@ export default function App() {
             >
               <Icon name={p === "Exports" ? "export" : p.toLowerCase()} />
               {p}
-              {p === "Receipts" && (
-                <span className="nav-count">{rows.length}</span>
-              )}
             </button>
           ))}
         </nav>
@@ -687,9 +683,7 @@ export default function App() {
       </aside>
       <div className="main-shell">
         <header className="topbar">
-          <span>
-            Workspace <span className="crumb">/</span> <strong>{page}</strong>
-          </span>
+          <strong>{page}</strong>
           <span className="topbar-note">
             <span className="green-dot" /> A little more organized.
           </span>
