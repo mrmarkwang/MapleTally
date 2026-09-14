@@ -2,6 +2,103 @@
 import { test, expect } from '@playwright/test';
 import sharp from 'sharp';
 import { randomUUID } from 'node:crypto';
+
+test('receipt list filters by an inclusive date range and paginates', async ({ page }, info) => {
+  let signedIn = false;
+  const receipts = Array.from({ length: 12 }, (_, index) => {
+    const day = 12 - index;
+    return {
+      id: `receipt-${day}`,
+      filename: `receipt-${day}.png`,
+      mime: 'image/png',
+      state: day % 3 === 0 ? 'needs_review' : 'approved',
+      fields: {
+        merchant: `Merchant ${day}`,
+        date: `2026-09-${String(day).padStart(2, '0')}`,
+        subtotal: 1000,
+        tax: 130,
+        tip: null,
+        total: 1130,
+        currency: 'CAD',
+        category: 'Office supplies',
+      },
+      original: null,
+      confidence: {},
+      warnings: [],
+      error: null,
+      version: 1,
+      duplicate_of: null,
+      approved_at: new Date().toISOString(),
+      created: new Date().toISOString(),
+    };
+  });
+
+  await page.route('**/api/**', route => {
+    const pathname = new URL(route.request().url()).pathname;
+    const send = (value: unknown, status = 200) => route.fulfill({ status, json: value });
+    if (pathname === '/api/auth/register') { signedIn = true; return send({ ok: true }); }
+    if (!signedIn) return send({ error: 'Please sign in.' }, 401);
+    if (pathname === '/api/me') return send({ user:{name:'Alex',email:'alex@example.ca'},workspace:{name:'Studio',forwarding:null},quota:{plan:'free',used:12,limit:25,period:'lifetime',canUpload:true},billingAvailable:false,hasCustomer:false,hasSubscription:false,extractionAvailable:false,notifications:[] });
+    if (pathname === '/api/receipts') return send(receipts);
+    if (pathname === '/api/exports') return send([]);
+    return send({ error: `Unexpected request ${route.request().method()} ${pathname}` }, 500);
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Your name').fill('Alex');
+  await page.getByLabel('Business name').fill('Studio');
+  await page.getByLabel('Email address').fill(`${randomUUID()}@example.ca`);
+  await page.getByLabel('Password', { exact: true }).fill('a very long password');
+  await page.getByRole('button', { name: 'Create your account' }).click();
+
+  await expect(page.getByRole('button', { name: /Merchant 12/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 2/ })).toHaveCount(0);
+  await page.screenshot({ path: `test-results/${info.project.name}-receipt-filters.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Next receipt page' }).click();
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 2/ })).toBeVisible();
+
+  await page.getByLabel('Receipts from').fill('2026-09-03');
+  await page.getByLabel('Receipts to').fill('2026-09-11');
+  await expect(page.getByRole('button', { name: /Merchant 11/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 3/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 12/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Merchant 2/ })).toHaveCount(0);
+  await expect(page.getByText('1–9 of 9 receipts')).toBeVisible();
+
+  await page.getByLabel('Receipt status').click();
+  await page.getByLabel('Needs review').check();
+  await expect(page.getByRole('button', { name: /Merchant 9/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 6/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 3/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 11/ })).toHaveCount(0);
+  await expect(page.getByText('1–3 of 3 receipts')).toBeVisible();
+  await expect(page.getByText('3 receipts', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Approved').check();
+  await expect(page.getByRole('button', { name: /Merchant 11/ })).toBeVisible();
+  await expect(page.getByText('6 receipts', { exact: true })).toBeVisible();
+  await page.getByLabel('Search receipts').click();
+  await expect(page.locator('.status-filter details')).not.toHaveAttribute('open', '');
+
+  await page.getByLabel('Search receipts').fill('Merchant 11');
+  await expect(page.getByText('1 receipt', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Receipts from')).toHaveValue('2026-09-03');
+  await expect(page.getByLabel('Receipts to')).toHaveValue('2026-09-11');
+  await expect(page.getByLabel('Search receipts')).toHaveValue('Merchant 11');
+  await expect(page.getByLabel('Receipt status')).toHaveText('2 statuses');
+  await expect(page.getByText('1 receipt', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Reset filters' }).click();
+  await expect(page.getByLabel('Receipts from')).toHaveValue('');
+  await expect(page.getByLabel('Receipts to')).toHaveValue('');
+  await expect(page.getByLabel('Search receipts')).toHaveValue('');
+  await expect(page.getByLabel('Receipt status')).toHaveText('Any status');
+  await expect(page.getByText('12 receipts', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset filters' })).toHaveCount(0);
+});
+
 test('Next receipt UI: direct upload, correction and queued export contracts', async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   let signedIn = false; let receipt: any = null; let exported = false; let original: Buffer;
@@ -39,7 +136,7 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   await page.getByLabel('Business name').fill('Northline Studio');
   await page.getByLabel('Email address').fill(`${randomUUID()}@example.ca`);
   await page.getByLabel('Password', { exact: true }).fill('my long test password');
-  await page.getByRole('button', { name: 'Create your workspace' }).click();
+  await page.getByRole('button', { name: 'Create your account' }).click();
   await expect(page.getByRole('heading', { name: 'Your receipts', exact: true })).toBeVisible();
   expect((await page.locator('.capture-card').boundingBox())!.height).toBeLessThan(350);
   await page.screenshot({ path: `test-results/${info.project.name}-workspace.png`, fullPage: true });
@@ -54,7 +151,7 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   await page.getByRole('button', { name: 'Back to receipts' }).click();
   await expect(page.getByRole('button', { name: /cafe.png/ })).toContainText('failed', { timeout: 15000 });
   await expect(page.locator('.stats > div').filter({hasText:'Ready for review'})).toContainText('0');
-  await expect(page.getByRole('button', {name:'Needs attention'})).toBeVisible();
+  await expect(page.getByText('1 receipt', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /cafe.png/ }).click();
   await expect(page.getByText('Automatic extraction is not configured.', { exact: false })).toBeVisible();
   await page.getByLabel('Merchant', { exact: true }).fill('Maple Café');
@@ -150,7 +247,7 @@ test('open receipt updates automatically when background extraction completes', 
   await page.getByLabel('Business name').fill('Studio');
   await page.getByLabel('Email address').fill(`${randomUUID()}@example.ca`);
   await page.getByLabel('Password', {exact:true}).fill('a very long password');
-  await page.getByRole('button', {name:'Create your workspace'}).click();
+  await page.getByRole('button', {name:'Create your account'}).click();
   const bytes = await sharp({create:{width:20,height:20,channels:3,background:'#fff'}}).jpeg().toBuffer();
   await page.locator('input[type=file]').first().setInputFiles({name:'home-depot.jpg',mimeType:'image/jpeg',buffer:bytes});
   await expect(page.getByRole('heading', {name:'Review receipt',exact:true})).toBeVisible();
@@ -167,7 +264,7 @@ test('Supabase email confirmation is shown before entering the workspace', async
   await page.goto('/');
   await page.getByLabel('Your name').fill('Alex'); await page.getByLabel('Business name').fill('Studio');
   await page.getByLabel('Email address').fill('alex@example.ca'); await page.getByLabel('Password', {exact:true}).fill('a very long password');
-  await page.getByRole('button', {name:'Create your workspace'}).click();
+  await page.getByRole('button', {name:'Create your account'}).click();
   await expect(page.getByRole('status')).toContainText('Check your email');
 });
 
@@ -205,7 +302,7 @@ test('manual edits survive while untouched fields update from queued extraction'
   await page.getByLabel('Business name').fill('Northline Studio');
   await page.getByLabel('Email address').fill(`${randomUUID()}@example.ca`);
   await page.getByLabel('Password', { exact: true }).fill('my long test password');
-  await page.getByRole('button', { name: 'Create your workspace' }).click();
+  await page.getByRole('button', { name: 'Create your account' }).click();
   await expect(page.getByRole('heading', { name: 'Your receipts', exact: true })).toBeVisible();
   await page.locator('input[type=file]').first().setInputFiles({ name: 'cafe.png', mimeType: 'image/png', buffer: Buffer.from('receipt') });
   await expect(page.getByRole('heading', { name: 'Review receipt', exact: true })).toBeVisible();

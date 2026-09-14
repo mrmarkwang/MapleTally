@@ -43,9 +43,20 @@ type Me = {
   notifications: { id: string; message: string }[];
 };
 type Page = "Receipts" | "Exports" | "Settings";
+const RECEIPTS_PER_PAGE = 10;
 const APPROVED_STATES = new Set(["approved", "exported"]);
 const REVIEW_READY_STATES = new Set(["needs_review", "duplicate_candidate"]);
 const IN_PROGRESS_STATES = new Set(["captured", "processing"]);
+const STATUS_OPTIONS = [
+  ["captured", "Captured"],
+  ["processing", "Processing"],
+  ["needs_review", "Needs review"],
+  ["duplicate_candidate", "Possible duplicate"],
+  ["approved", "Approved"],
+  ["exported", "Exported"],
+  ["failed", "Failed"],
+];
+const RECEIPT_FILTERS_STORAGE_KEY = "mapletally.receiptFilters";
 
 function isApproved(receipt: Receipt) {
   return APPROVED_STATES.has(receipt.state);
@@ -320,7 +331,7 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
               {busy
                 ? "One moment…"
                 : register
-                  ? "Create your workspace"
+                  ? "Create your account"
                   : "Sign in"}
               <Icon name="arrow" size={16} />
             </button>
@@ -343,7 +354,11 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+  const [receiptPage, setReceiptPage] = useState(1);
   const [progress, setProgress] = useState<number | null>(null);
   const [retryFile, setRetryFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -354,6 +369,7 @@ export default function App() {
   const [setupError, setSetupError] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
+  const statusDetails = useRef<HTMLDetailsElement>(null);
   const hasPendingWork =
     rows.some((row) => ["captured", "processing"].includes(row.state)) ||
     exportJobs.some((job) => ["queued", "processing"].includes(job.status));
@@ -401,6 +417,55 @@ export default function App() {
     const timer = setTimeout(() => setToast(""), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    const closeStatusMenu = (event: PointerEvent) => {
+      if (!statusDetails.current?.contains(event.target as Node)) {
+        statusDetails.current?.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", closeStatusMenu);
+    return () => document.removeEventListener("pointerdown", closeStatusMenu);
+  }, []);
+  useEffect(() => {
+    const email = me?.user.email;
+    if (!email) return;
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(`${RECEIPT_FILTERS_STORAGE_KEY}:${email}`) || "{}",
+      ) as Record<string, unknown>;
+      const validStatuses = new Set(STATUS_OPTIONS.map(([value]) => value));
+      const isDate = (value: unknown): value is string =>
+        typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+      setStatusFilters(
+        Array.isArray(saved.statuses)
+          ? saved.statuses.filter(
+              (status): status is string =>
+                typeof status === "string" && validStatuses.has(status),
+            )
+          : [],
+      );
+      setDateFrom(isDate(saved.dateFrom) ? saved.dateFrom : "");
+      setDateTo(isDate(saved.dateTo) ? saved.dateTo : "");
+      setSearch(typeof saved.search === "string" ? saved.search : "");
+    } catch {
+      setStatusFilters([]);
+      setDateFrom("");
+      setDateTo("");
+      setSearch("");
+    }
+    setReceiptPage(1);
+    setFilterOwner(email);
+  }, [me?.user.email]);
+  useEffect(() => {
+    const email = me?.user.email;
+    if (!email || filterOwner !== email) return;
+    try {
+      localStorage.setItem(
+        `${RECEIPT_FILTERS_STORAGE_KEY}:${email}`,
+        JSON.stringify({ statuses: statusFilters, dateFrom, dateTo, search }),
+      );
+    } catch {}
+  }, [me?.user.email, filterOwner, statusFilters, dateFrom, dateTo, search]);
   async function act(fn: () => Promise<void>) {
     setError("");
     setActionBusy(true);
@@ -517,15 +582,29 @@ export default function App() {
   const totalCad = approved
     .filter((r) => r.fields.currency === "CAD")
     .reduce((sum, r) => sum + (r.fields.total || 0), 0);
-  const visible = rows.filter(
+  const filteredRows = rows.filter(
     (r) =>
-      (filter === "all" ||
-        (filter === "review"
-          ? isReviewReady(r) || r.state === "failed"
-          : isApproved(r))) &&
+      (statusFilters.length === 0 || statusFilters.includes(r.state)) &&
       `${r.fields.merchant} ${r.filename} ${r.fields.category}`
         .toLowerCase()
-        .includes(search.toLowerCase()),
+        .includes(search.toLowerCase()) &&
+      ((!dateFrom && !dateTo) ||
+        (!!r.fields.date &&
+          (!dateFrom || r.fields.date >= dateFrom) &&
+          (!dateTo || r.fields.date <= dateTo))),
+  );
+  const hasActiveFilters =
+    statusFilters.length > 0 || !!dateFrom || !!dateTo || !!search;
+  const totalReceiptPages = Math.max(
+    1,
+    Math.ceil(filteredRows.length / RECEIPTS_PER_PAGE),
+  );
+  const currentReceiptPage = Math.min(receiptPage, totalReceiptPages);
+  const firstVisibleReceipt =
+    (currentReceiptPage - 1) * RECEIPTS_PER_PAGE;
+  const visible = filteredRows.slice(
+    firstVisibleReceipt,
+    firstVisibleReceipt + RECEIPTS_PER_PAGE,
   );
   return (
     <div className="app-layout">
@@ -540,7 +619,6 @@ export default function App() {
             <small>Business workspace</small>
           </div>
         </div>
-        <span className="nav-label">WORKSPACE</span>
         <nav>
           {(["Receipts", "Exports", "Settings"] as Page[]).map((p) => (
             <button
@@ -775,31 +853,113 @@ export default function App() {
               )}
               <section className="receipt-panel">
                 <div className="list-toolbar">
-                  <div className="tabs">
-                    {[
-                      ["all", "All receipts"],
-                      ["review", "Needs attention"],
-                      ["approved", "Approved"],
-                    ].map(([key, label]) => (
+                  <p className="filtered-count">
+                    {filteredRows.length} {filteredRows.length === 1 ? "receipt" : "receipts"}
+                  </p>
+                  <div className="list-filters">
+                    <div className="status-filter">
+                      <span>Status</span>
+                      <details ref={statusDetails}>
+                        <summary aria-label="Receipt status">
+                          {statusFilters.length === 0
+                            ? "Any status"
+                            : statusFilters.length === 1
+                              ? STATUS_OPTIONS.find(([value]) => value === statusFilters[0])?.[1]
+                              : `${statusFilters.length} statuses`}
+                        </summary>
+                        <div className="status-menu">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatusFilters([]);
+                              setReceiptPage(1);
+                            }}
+                          >
+                            Any status
+                          </button>
+                          {STATUS_OPTIONS.map(([value, label]) => (
+                            <label key={value}>
+                              <input
+                                type="checkbox"
+                                checked={statusFilters.includes(value)}
+                                onChange={(event) => {
+                                  setStatusFilters((current) =>
+                                    event.target.checked
+                                      ? [...current, value]
+                                      : current.filter((status) => status !== value),
+                                  );
+                                  setReceiptPage(1);
+                                }}
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                    <div className="date-range" role="group" aria-label="Receipt date range">
+                      <label>
+                        <span>From</span>
+                        <input
+                          type="date"
+                          aria-label="Receipts from"
+                          max={dateTo || undefined}
+                          value={dateFrom}
+                          onChange={(e) => {
+                            setDateFrom(e.target.value);
+                            setReceiptPage(1);
+                          }}
+                        />
+                      </label>
+                      <label>
+                        <span>To</span>
+                        <input
+                          type="date"
+                          aria-label="Receipts to"
+                          min={dateFrom || undefined}
+                          value={dateTo}
+                          onChange={(e) => {
+                            setDateTo(e.target.value);
+                            setReceiptPage(1);
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <label className="search">
+                      <Icon name="search" size={17} />
+                      <input
+                        aria-label="Search receipts"
+                        placeholder="Search receipts"
+                        value={search}
+                        onChange={(e) => {
+                          setSearch(e.target.value);
+                          setReceiptPage(1);
+                        }}
+                      />
+                    </label>
+                    {hasActiveFilters && (
                       <button
-                        key={key}
-                        className={filter === key ? "active" : ""}
-                        onClick={() => setFilter(key)}
+                        type="button"
+                        className="reset-filters"
+                        onClick={() => {
+                          setStatusFilters([]);
+                          setDateFrom("");
+                          setDateTo("");
+                          setSearch("");
+                          setReceiptPage(1);
+                          statusDetails.current?.removeAttribute("open");
+                          try {
+                            localStorage.removeItem(
+                              `${RECEIPT_FILTERS_STORAGE_KEY}:${me.user.email}`,
+                            );
+                          } catch {}
+                        }}
                       >
-                        {label}
-                        {key === "all" && <span>{rows.length}</span>}
+                        <Icon name="close" size={15} />
+                        Reset filters
                       </button>
-                    ))}
+                    )}
                   </div>
-                  <label className="search">
-                    <Icon name="search" size={17} />
-                    <input
-                      aria-label="Search receipts"
-                      placeholder="Search receipts"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </label>
                 </div>
                 {visible.length ? (
                   <div className="receipt-table">
@@ -866,9 +1026,36 @@ export default function App() {
                 )}
                 <div className="list-footer">
                   <span>
-                    {visible.length} receipt{visible.length === 1 ? "" : "s"}
+                    {filteredRows.length
+                      ? `${firstVisibleReceipt + 1}–${Math.min(firstVisibleReceipt + RECEIPTS_PER_PAGE, filteredRows.length)} of ${filteredRows.length}`
+                      : "0"}{" "}
+                    receipt{filteredRows.length === 1 ? "" : "s"}
                   </span>
-                  <span>Originals kept. Details in your hands.</span>
+                  {totalReceiptPages > 1 ? (
+                    <nav className="pagination" aria-label="Receipt pages">
+                      <button
+                        className="icon-button previous-page"
+                        aria-label="Previous receipt page"
+                        disabled={currentReceiptPage === 1}
+                        onClick={() => setReceiptPage(currentReceiptPage - 1)}
+                      >
+                        <Icon name="arrow" size={15} />
+                      </button>
+                      <span>
+                        Page {currentReceiptPage} of {totalReceiptPages}
+                      </span>
+                      <button
+                        className="icon-button"
+                        aria-label="Next receipt page"
+                        disabled={currentReceiptPage === totalReceiptPages}
+                        onClick={() => setReceiptPage(currentReceiptPage + 1)}
+                      >
+                        <Icon name="arrow" size={15} />
+                      </button>
+                    </nav>
+                  ) : (
+                    <span>Originals kept. Details in your hands.</span>
+                  )}
                 </div>
               </section>
               <div className="bottom-note">

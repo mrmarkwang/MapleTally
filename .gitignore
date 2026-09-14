@@ -11,4 +11,5 @@ next-env.d.ts
 data/
 test-results/
 playwright-report/
+.playwright-mcp/
 .DS_Store
