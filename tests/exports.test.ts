@@ -24,8 +24,8 @@ test("export worker streams a ZIP larger than 4.5 MB into private Storage with e
       fields,
       original: fields,
       warnings: ["Check tax"],
-      state: "approved",
-      approved_at: "2026-09-13",
+      state: "confirmed",
+      confirmed_at: "2026-09-13",
       version: 2,
       revisions: [],
     },
@@ -90,9 +90,11 @@ test("export worker streams a ZIP larger than 4.5 MB into private Storage with e
     "%PDF-",
   );
   assert.match(strFromU8(zip["receipts.csv"]), /'=Merchant/);
+  assert.match(strFromU8(zip["receipts.csv"]), /confirmed_at/);
+  assert.match(strFromU8(zip["receipts.csv"]), /confirmed/);
   const record = JSON.parse(strFromU8(zip["records.json"]))[0];
   assert.equal(record.fields.total, 1330);
-  assert.equal(record.approved_at, "2026-09-13");
+  assert.equal(record.confirmed_at, "2026-09-13");
   assert.equal(record.object_key, undefined);
 });
 test("export worker rejects cleanly when the streaming Storage upload fails", async () => {

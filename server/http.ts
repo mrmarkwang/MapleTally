@@ -386,7 +386,7 @@ async function dispatch(req: NextRequest): Promise<Response> {
     await rpc(db, "cancel_upload", { w: w.id, upload_id: id });
     return json({ ok: true });
   }
-  const match = path.match(/^\/receipts\/([^/]+)(?:\/(approve|retry|link))?$/);
+  const match = path.match(/^\/receipts\/([^/]+)(?:\/(confirm|retry|link))?$/);
   if (match) {
     const r = await getReceipt(match[1]);
     if (method === "GET" && match[2] === "link")
@@ -424,7 +424,7 @@ async function dispatch(req: NextRequest): Promise<Response> {
         ),
       );
     }
-    if (method === "POST" && match[2] === "approve") {
+    if (method === "POST" && match[2] === "confirm") {
       const input = z
         .object({
           version: z.number().int(),
@@ -435,11 +435,11 @@ async function dispatch(req: NextRequest): Promise<Response> {
       if (!f.merchant || !f.date || f.total === null)
         throw new HttpError(
           400,
-          "Add merchant, date and total before approval.",
+          "Add merchant, date and total before confirmation.",
         );
       return json(
         view(
-          await rpc(db, "approve_receipt", {
+          await rpc(db, "confirm_receipt", {
             w: w.id,
             receipt: r.id,
             expected: input.version,

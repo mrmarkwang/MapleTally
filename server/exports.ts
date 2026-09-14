@@ -1,4 +1,4 @@
-/** Portable CSV/PDF/ZIP exports with approval status, warning details and immutable audit snapshots. */
+/** Portable CSV/PDF/ZIP exports with confirmation status, warning details and immutable audit snapshots. */
 import PDFDocument from "pdfkit";
 import { csvCell } from "./domain";
 import type { Row } from "./supabase";
@@ -16,7 +16,7 @@ export function exportCsv(rows: Row[]) {
     "currency",
     "category",
     "warnings",
-    "approved_at",
+    "confirmed_at",
   ];
   return (
     "\uFEFF" +
@@ -63,7 +63,7 @@ export async function exportPdf(
     .moveDown();
   doc
     .text(
-      "Amounts are in each receipt’s currency. Unapproved records are included and labelled. Warnings are arithmetic checks, not tax advice.",
+      "Amounts are in each receipt’s currency. Unconfirmed records are included and labelled. Warnings are arithmetic checks, not tax advice.",
     )
     .moveDown();
   for (const r of rows) {
@@ -79,7 +79,7 @@ export async function exportPdf(
       `Subtotal: ${money(r.fields.subtotal)}  Tax: ${money(r.fields.tax)}  Tip: ${money(r.fields.tip)}  Total: ${money(r.fields.total)} ${r.fields.currency}`,
     );
     doc.text(`Original: ${r.filename} | ID: ${r.id}`);
-    doc.text(`Approved: ${r.approved_at || "Not approved"}`);
+    doc.text(`Confirmed: ${r.confirmed_at || "Not confirmed"}`);
     for (const warning of r.warnings) doc.text(`Check: ${warning}`);
     doc.moveDown();
   }

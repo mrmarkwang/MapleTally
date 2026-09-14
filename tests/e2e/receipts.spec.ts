@@ -11,7 +11,7 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
       id: `receipt-${day}`,
       filename: `receipt-${day}.png`,
       mime: 'image/png',
-      state: day % 3 === 0 ? 'needs_review' : 'approved',
+      state: day % 3 === 0 ? 'needs_review' : 'confirmed',
       fields: {
         merchant: `Merchant ${day}`,
         date: `2026-09-${String(day).padStart(2, '0')}`,
@@ -28,7 +28,7 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
       error: null,
       version: 1,
       duplicate_of: null,
-      approved_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
       created: new Date().toISOString(),
     };
   });
@@ -75,9 +75,9 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
   await expect(page.getByText('1–3 of 3 receipts')).toBeVisible();
   await expect(page.getByText('3 receipts', { exact: true })).toBeVisible();
 
-  await page.getByLabel('Approved').check();
+  await page.getByLabel('Confirmed').check();
   await expect(page.getByRole('button', { name: /Merchant 11/ })).toBeVisible();
-  await expect(page.getByText('6 receipts', { exact: true })).toBeVisible();
+  await expect(page.getByText('9 receipts', { exact: true })).toBeVisible();
   await page.getByLabel('Search receipts').click();
   await expect(page.locator('.status-filter details')).not.toHaveAttribute('open', '');
 
@@ -113,12 +113,12 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
     if (pathname === '/api/uploads') return send({ id, url: `${url.origin}/test-storage/upload` });
     if (pathname === `/api/uploads/${id}/complete`) {
       const duplicate = !!receipt;
-      receipt ||= { id,filename:'cafe.png',mime:'image/png',state:'failed',fields:{merchant:'',date:'',subtotal:null,tax:null,tip:null,total:null,currency:'CAD',category:'Uncategorized'}, original:null,confidence:{},warnings:[],error:'Automatic extraction is not configured. Enter the details manually.',version:1,duplicate_of:null,approved_at:null,created:new Date().toISOString() };
+      receipt ||= { id,filename:'cafe.png',mime:'image/png',state:'failed',fields:{merchant:'',date:'',subtotal:null,tax:null,tip:null,total:null,currency:'CAD',category:'Uncategorized'}, original:null,confidence:{},warnings:[],error:'Automatic extraction is not configured. Enter the details manually.',version:1,duplicate_of:null,confirmed_at:null,created:new Date().toISOString() };
       return send({ id, duplicate });
     }
     if (pathname === `/api/receipts/${id}/link`) return send({ url:`${url.origin}/test-storage/original` });
     if (pathname === `/api/receipts/${id}` && method === 'PUT') { receipt = {...receipt,fields:route.request().postDataJSON().fields,state:'needs_review',error:null,version:receipt.version+1}; return send(receipt); }
-    if (pathname === `/api/receipts/${id}/approve`) { receipt = {...receipt,state:'approved',approved_at:new Date().toISOString(),version:receipt.version+1}; return send(receipt); }
+    if (pathname === `/api/receipts/${id}/confirm`) { receipt = {...receipt,state:'confirmed',confirmed_at:new Date().toISOString(),version:receipt.version+1}; return send(receipt); }
     if (pathname === `/api/receipts/${id}`) return send(receipt);
     if (pathname === '/api/exports' && method === 'POST') { exported = true; return send({id:exportId,status:'queued'},202); }
     if (pathname === '/api/exports') return send(exported ? [{id:exportId,format:'zip',status:'complete',error:null}] : []);
@@ -151,7 +151,7 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   await page.getByRole('button', { name: 'Back to receipts' }).click();
   await expect(page.getByRole('button', { name: /cafe.png/ })).toContainText('failed', { timeout: 15000 });
   await expect(page.locator('.stats > div').filter({hasText:'Ready for review'})).toContainText('0');
-  await expect(page.getByText('1 receipt', { exact: true })).toBeVisible();
+  await expect(page.getByText('1–1 of 1 receipt', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /cafe.png/ }).click();
   await expect(page.getByText('Automatic extraction is not configured.', { exact: false })).toBeVisible();
   await page.getByLabel('Merchant', { exact: true }).fill('Maple Café');
@@ -160,11 +160,11 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   await page.getByLabel('Sales tax', { exact: true }).fill('1.30');
   await page.getByLabel('Tip', { exact: true }).fill('2');
   await page.getByLabel('Total', { exact: true }).fill('13.30');
-  await expect(page.getByRole('button', { name: 'Approve receipt', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Confirm receipt', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Approve receipt', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Approve receipt', exact: true }).click();
-  await expect(page.locator('.page-heading .status')).toHaveText('approved');
+  await expect(page.getByRole('button', { name: 'Confirm receipt', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Confirm receipt', exact: true }).click();
+  await expect(page.locator('.page-heading .status')).toHaveText('confirmed');
   await page.screenshot({ path: `test-results/${info.project.name}-review.png`, fullPage: true });
   await page.getByRole('button', { name: 'Back to receipts' }).click();
   await page.locator('input[type=file]').first().setInputFiles({ name: 'same.png', mimeType: 'image/png', buffer: bytes });
@@ -203,7 +203,7 @@ test('open receipt updates automatically when background extraction completes', 
     error: null,
     version: 1,
     duplicate_of: null,
-    approved_at: null,
+    confirmed_at: null,
     created: new Date().toISOString(),
   });
   const extracted = () => ({
@@ -289,7 +289,7 @@ test('manual edits survive while untouched fields update from queued extraction'
     if (pathname === '/api/exports') return send([]);
     if (pathname === '/api/uploads') return send({ id, url: `${url.origin}/test-storage/upload` });
     if (pathname === `/api/uploads/${id}/complete`) {
-      receipt = { id,filename:'cafe.png',mime:'image/png',state:'captured',fields:{merchant:'',date:'',subtotal:null,tax:null,tip:null,total:null,currency:'CAD',category:'Uncategorized'},original:null,confidence:{},warnings:[],error:null,version:1,duplicate_of:null,approved_at:null,created:new Date().toISOString() };
+      receipt = { id,filename:'cafe.png',mime:'image/png',state:'captured',fields:{merchant:'',date:'',subtotal:null,tax:null,tip:null,total:null,currency:'CAD',category:'Uncategorized'},original:null,confidence:{},warnings:[],error:null,version:1,duplicate_of:null,confirmed_at:null,created:new Date().toISOString() };
       return send({ id, duplicate:false });
     }
     if (pathname === `/api/receipts/${id}/link`) return send({ url:`${url.origin}/test-storage/original` });

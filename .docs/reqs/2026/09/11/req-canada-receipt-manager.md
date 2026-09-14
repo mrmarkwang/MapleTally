@@ -16,7 +16,7 @@ Provide a mobile-friendly web MVP that lets a user upload or forward a receipt, 
 - [ ] The system extracts merchant, date, subtotal, tax, tip, total, currency, and category when available.
 - [ ] The user can review and edit extracted fields before approval.
 - [ ] The system validates arithmetic consistency and provides basic GST/HST warnings without presenting them as tax advice.
-- [ ] The system marks processing, review, approved, failed, duplicate-candidate, and exported states visibly.
+- [ ] The system marks processing, review, confirmed, failed, duplicate-candidate, and exported states visibly.
 - [ ] A user can export structured data as CSV and a readable report as PDF, with the original files included in a ZIP package.
 - [ ] A user can delete account data and export their records without being locked out because of subscription status.
 - [ ] The system supports a free allowance and a paid web subscription, with cancellation available from the web account.
@@ -30,7 +30,7 @@ Provide a mobile-friendly web MVP that lets a user upload or forward a receipt, 
 - Web/PWA is the first client; native iOS/Android is out of scope for the MVP.
 - Bank API connections, QuickBooks/Xero bidirectional sync, payroll, inventory, and automated tax filing are out of scope.
 - Sensitive receipt data must be access-controlled, encrypted in transit, and separated by workspace.
-- AI output is advisory and must not be written to a final approved record without user confirmation.
+- AI output is advisory and must not be written to a final confirmed record without user confirmation.
 - Processing providers must be replaceable behind a small internal adapter.
 
 ## Non-Goals

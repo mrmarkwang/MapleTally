@@ -2,9 +2,9 @@
 
 1. Register an account and show the Supabase email-confirmation state before entering an empty workspace. After confirmation, sign out and sign back in; invalid credentials fail visibly.
 2. Request a signed private Storage upload URL, upload an image directly from desktop and mobile viewport sizes without proxying bytes through Next.js, then complete the upload and show its receipt record. Processing failure remains visible and supports retry/manual entry. Reject unsupported files and files over 10 MB.
-3. Edit merchant, date, amounts, currency and category. Show deterministic warnings. Approve only after user action. Editing an approved receipt clears approval.
+3. Edit merchant, date, amounts, currency and category. Show deterministic warnings. Confirm only after user action. Editing a confirmed receipt clears confirmation.
 4. Upload identical bytes; identify the existing receipt without creating another expense. Similar merchant/date/total records require explicit duplicate acknowledgement.
-5. Queue immutable CSV/PDF/ZIP export snapshots, poll their asynchronous status, then follow a signed private Storage download URL. Verify original bytes, approved values, warnings, corrections, approval metadata and formula-safe CSV. Unapproved receipts remain clearly labelled in full-data exports.
+5. Queue immutable CSV/PDF/ZIP export snapshots, poll their asynchronous status, then follow a signed private Storage download URL. Verify original bytes, confirmed values, warnings, corrections, confirmation metadata and formula-safe CSV. Unconfirmed receipts remain clearly labelled in full-data exports.
 6. Using live Supabase identities, verify RLS prevents another account from reading, modifying, approving, deleting, exporting or retrieving signed originals from the first workspace. Keep this live-service isolation check separate from mocked browser contract tests.
 7. Verify signed email delivery, sender validation, redelivery idempotency, unsupported attachment failure, and failure notification persistence using provider fixtures.
 8. Verify free limit and paid monthly limit, authenticated checkout/customer portal, signed billing events and cancellation. Read/export/delete continue after cancellation.

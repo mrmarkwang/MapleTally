@@ -1,4 +1,4 @@
-/** Receipt contract and deterministic checks. Amounts use integer cents; AI never approves. */
+/** Receipt contract and deterministic checks. Amounts use integer cents; AI never confirms. */
 import { z } from "zod";
 const amount = z
   .number()

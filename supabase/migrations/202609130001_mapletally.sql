@@ -14,10 +14,10 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 create table public.receipts (
   id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces on delete cascade,
   filename text not null, mime text not null, hash text not null, object_key text not null,
-  state text not null default 'captured' check(state in ('captured','processing','needs_review','approved','failed','duplicate_candidate','exported')),
+  state text not null default 'captured' check(state in ('captured','processing','needs_review','confirmed','failed','duplicate_candidate','exported')),
   fields jsonb not null, original jsonb, confidence jsonb not null default '{}', warnings jsonb not null default '[]',
   duplicate_key text, duplicate_of uuid, duplicate_ack boolean not null default false, error text,
-  version integer not null default 1, approved_at timestamptz, created timestamptz not null default now(), updated timestamptz not null default now(),
+  version integer not null default 1, confirmed_at timestamptz, created timestamptz not null default now(), updated timestamptz not null default now(),
   unique(workspace_id,hash)
 );
 create table public.uploads (
@@ -166,21 +166,21 @@ begin
  select id into duplicate from public.receipts where workspace_id=w and id<>receipt and duplicate_key=new_key order by created limit 1;
  insert into public.revisions(receipt_id,fields) values(receipt,r.fields);
  update public.receipts set fields=new_fields,warnings=new_warnings,duplicate_key=new_key,duplicate_of=duplicate,duplicate_ack=false,
- state=case when duplicate is null then 'needs_review' else 'duplicate_candidate' end,approved_at=null,error=null,version=version+1,updated=now() where id=receipt returning * into r;
+ state=case when duplicate is null then 'needs_review' else 'duplicate_candidate' end,confirmed_at=null,error=null,version=version+1,updated=now() where id=receipt returning * into r;
  delete from public.jobs where kind='receipt' and target=receipt;
  return r;
 end $$;
-create function public.approve_receipt(w uuid, receipt uuid, expected integer, acknowledge boolean) returns public.receipts language plpgsql set search_path = '' as $$
+create function public.confirm_receipt(w uuid, receipt uuid, expected integer, acknowledge boolean) returns public.receipts language plpgsql set search_path = '' as $$
 declare r public.receipts; duplicate uuid;
 begin
  perform public.lock_workspace(w);
  select * into r from public.receipts where id=receipt and workspace_id=w for update;
  if not found then raise exception 'receipt not found'; end if;
- if r.version<>expected then raise exception 'stale receipt; reopen before approving'; end if;
+ if r.version<>expected then raise exception 'stale receipt; reopen before confirming'; end if;
  if coalesce(r.fields->>'merchant','')='' or coalesce(r.fields->>'date','')='' or r.fields->>'total' is null then raise exception 'merchant, date and total required'; end if;
  select id into duplicate from public.receipts where workspace_id=w and id<>receipt and duplicate_key=r.duplicate_key order by created limit 1;
  if duplicate is not null and not acknowledge then raise exception 'duplicate: confirm this is a separate expense'; end if;
- update public.receipts set state='approved',duplicate_of=duplicate,duplicate_ack=acknowledge,approved_at=now(),updated=now(),version=version+1 where id=receipt returning * into r;
+ update public.receipts set state='confirmed',duplicate_of=duplicate,duplicate_ack=acknowledge,confirmed_at=now(),updated=now(),version=version+1 where id=receipt returning * into r;
  delete from public.jobs where kind='receipt' and target=receipt;
  return r;
 end $$;
@@ -265,7 +265,7 @@ begin
  if j.id is null then return false; end if;
  update public.exports set status='complete',object_key=complete_export_job.object_key,error=null where id=j.target returning * into e;
  for entry in select * from jsonb_array_elements(e.snapshot) loop
-   update public.receipts set state='exported' where id=(entry->>'id')::uuid and version=(entry->>'version')::integer and state='approved';
+  update public.receipts set state='exported' where id=(entry->>'id')::uuid and version=(entry->>'version')::integer and state='confirmed';
  end loop;
  delete from public.jobs where id=job; return true;
 end $$;
@@ -336,7 +336,7 @@ begin
 end $$;
 -- Service role only: neither anonymous clients nor users may call privileged RPCs.
 do $$ declare f record; begin
- for f in select p.oid::regprocedure signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('create_workspace','lock_workspace','lock_job','quota','reserve_upload','activate_upload','finish_upload','finish_email_upload','cancel_upload','edit_receipt','approve_receipt','retry_receipt','create_export','claim_job','complete_receipt_job','complete_export_job','complete_email_job','fail_job','enqueue_email','rotate_checkout','delete_receipt') loop
+ for f in select p.oid::regprocedure signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('create_workspace','lock_workspace','lock_job','quota','reserve_upload','activate_upload','finish_upload','finish_email_upload','cancel_upload','edit_receipt','confirm_receipt','retry_receipt','create_export','claim_job','complete_receipt_job','complete_export_job','complete_email_job','fail_job','enqueue_email','rotate_checkout','delete_receipt') loop
  execute format('revoke all on function %s from public,anon,authenticated',f.signature);
  execute format('grant execute on function %s to service_role',f.signature);
  end loop;

@@ -1077,7 +1077,7 @@ nav button:hover {
   border-radius: 50%;
   background: currentColor;
 }
-.status.approved,
+.status.confirmed,
 .status.exported {
   background: #eaf1e2;
   color: #6e8c53;

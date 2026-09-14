@@ -86,11 +86,11 @@ test("migration creates private buckets and Auth-triggered workspaces; RLS isola
     1,
   );
   await assert.rejects(
-    db.query("update public.receipts set state='approved'"),
+    db.query("update public.receipts set state='confirmed'"),
     /permission denied/,
   );
   await assert.rejects(
-    call(db, "approve_receipt", [w.id, r.id, 1, true]),
+    call(db, "confirm_receipt", [w.id, r.id, 1, true]),
     /permission denied/,
   );
   await assert.rejects(
@@ -164,7 +164,7 @@ test("upload cancellation preserves finalized originals and delays abandoned-key
     ],
   );
 });
-test("receipt edits preserve history, reject stale writes, and approval is explicit", async (t) => {
+test("receipt edits preserve history, reject stale writes, and confirmation is explicit", async (t) => {
   const { db, w } = await setup(t);
   const r = await receipt(db, w);
   const edited = await call(db, "edit_receipt", [
@@ -176,34 +176,34 @@ test("receipt edits preserve history, reject stale writes, and approval is expli
     duplicateKey(fields),
   ]);
   assert.equal(edited.state, "needs_review");
-  assert.equal(edited.approved_at, null);
+  assert.equal(edited.confirmed_at, null);
   await assert.rejects(
     call(db, "edit_receipt", [w.id, r.id, 1, fields, [], duplicateKey(fields)]),
     /stale/,
   );
-  const approved = await call(db, "approve_receipt", [
+  const confirmed = await call(db, "confirm_receipt", [
     w.id,
     r.id,
     edited.version,
     false,
   ]);
-  assert.equal(approved.state, "approved");
-  assert.ok(approved.approved_at);
+  assert.equal(confirmed.state, "confirmed");
+  assert.ok(confirmed.confirmed_at);
   const reedited = await call(db, "edit_receipt", [
     w.id,
     r.id,
-    approved.version,
+    confirmed.version,
     fields,
     [],
     duplicateKey(fields),
   ]);
-  assert.equal(reedited.approved_at, null);
+  assert.equal(reedited.confirmed_at, null);
   assert.equal(
     (await db.query("select * from public.revisions")).rows.length,
     2,
   );
 });
-test("duplicate approval is blocked unless the user acknowledges a separate expense", async (t) => {
+test("duplicate confirmation is blocked unless the user acknowledges a separate expense", async (t) => {
   const { db, w } = await setup(t);
   const a = await receipt(db, w, "a");
   const b = await receipt(db, w, "b");
@@ -225,12 +225,12 @@ test("duplicate approval is blocked unless the user acknowledges a separate expe
   ]);
   assert.equal(r.state, "duplicate_candidate");
   await assert.rejects(
-    call(db, "approve_receipt", [w.id, b.id, r.version, false]),
+    call(db, "confirm_receipt", [w.id, b.id, r.version, false]),
     /duplicate/,
   );
   assert.equal(
-    (await call(db, "approve_receipt", [w.id, b.id, r.version, true])).state,
-    "approved",
+    (await call(db, "confirm_receipt", [w.id, b.id, r.version, true])).state,
+    "confirmed",
   );
 });
 test("job leases are exclusive, expired leases are reclaimed and stale tokens cannot finish", async (t) => {
@@ -270,7 +270,7 @@ test("job leases are exclusive, expired leases are reclaimed and stale tokens ca
   );
   const r = (await db.query<any>("select * from public.receipts")).rows[0];
   assert.equal(r.state, "needs_review");
-  assert.equal(r.approved_at, null);
+  assert.equal(r.confirmed_at, null);
   assert.equal(
     (await db.query("select * from public.attempts")).rows.length,
     1,
@@ -386,7 +386,7 @@ test("export snapshot is immutable and does not mark later corrections exported"
     [],
     duplicateKey(fields),
   ]);
-  const approved = await call(db, "approve_receipt", [
+  const confirmed = await call(db, "confirm_receipt", [
     w.id,
     r.id,
     edited.version,
@@ -396,7 +396,7 @@ test("export snapshot is immutable and does not mark later corrections exported"
   await call(db, "edit_receipt", [
     w.id,
     r.id,
-    approved.version,
+    confirmed.version,
     { ...fields, total: 2000 },
     [],
     "changed",

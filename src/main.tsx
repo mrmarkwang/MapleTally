@@ -22,7 +22,7 @@ type Receipt = {
   error: string | null;
   version: number;
   duplicate_of: string | null;
-  approved_at: string | null;
+  confirmed_at: string | null;
   created: string;
   confidence: Record<string, number>;
 };
@@ -44,7 +44,7 @@ type Me = {
 };
 type Page = "Receipts" | "Exports" | "Settings";
 const RECEIPTS_PER_PAGE = 10;
-const APPROVED_STATES = new Set(["approved", "exported"]);
+const CONFIRMED_STATES = new Set(["confirmed", "exported"]);
 const REVIEW_READY_STATES = new Set(["needs_review", "duplicate_candidate"]);
 const IN_PROGRESS_STATES = new Set(["captured", "processing"]);
 const STATUS_OPTIONS = [
@@ -52,14 +52,14 @@ const STATUS_OPTIONS = [
   ["processing", "Processing"],
   ["needs_review", "Needs review"],
   ["duplicate_candidate", "Possible duplicate"],
-  ["approved", "Approved"],
+  ["confirmed", "Confirmed"],
   ["exported", "Exported"],
   ["failed", "Failed"],
 ];
 const RECEIPT_FILTERS_STORAGE_KEY = "mapletally.receiptFilters";
 
-function isApproved(receipt: Receipt) {
-  return APPROVED_STATES.has(receipt.state);
+function isConfirmed(receipt: Receipt) {
+  return CONFIRMED_STATES.has(receipt.state);
 }
 
 function isReviewReady(receipt: Receipt) {
@@ -338,7 +338,7 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
           </form>
           <p className="fine-print">
             Your originals stay linked to your records. Review every receipt
-            before approval, and export your data whenever you need it.
+            before confirmation, and export your data whenever you need it.
           </p>
         </div>
       </section>
@@ -576,10 +576,10 @@ export default function App() {
     );
   if (!me) return <Auth onLogin={refresh} />;
   const needsReview = rows.filter(isReviewReady);
-  const approved = rows.filter(isApproved);
+  const confirmed = rows.filter(isConfirmed);
   const inProgress = rows.filter((r) => IN_PROGRESS_STATES.has(r.state));
   const failed = rows.filter((r) => r.state === "failed");
-  const totalCad = approved
+  const totalCad = confirmed
     .filter((r) => r.fields.currency === "CAD")
     .reduce((sum, r) => sum + (r.fields.total || 0), 0);
   const filteredRows = rows.filter(
@@ -778,11 +778,11 @@ export default function App() {
                 </div>
                 <div>
                   <span>
-                    Approved expenses <Icon name="check" size={18} />
+                    Confirmed expenses <Icon name="check" size={18} />
                   </span>
                   <strong>
                     {money(totalCad, "CAD")}
-                    <small>CAD · {approved.length} approved records</small>
+                    <small>CAD · {confirmed.length} confirmed records</small>
                   </strong>
                 </div>
               </div>
@@ -1100,10 +1100,10 @@ export default function App() {
               <div className="notice">
                 <Icon name="receipts" />
                 <span>
-                  {rows.length} receipts · {approved.length} approved ·{" "}
+                  {rows.length} receipts · {confirmed.length} confirmed ·{" "}
                   {needsReview.length} ready for review · {inProgress.length}{" "}
                   processing · {failed.length} failed. Exports include all
-                  records, with approval status clearly labelled.
+                  records, with confirmation status clearly labelled.
                 </span>
               </div>
               <div className="export-grid">
@@ -1120,7 +1120,7 @@ export default function App() {
                       format: "csv",
                       label: "Just the numbers",
                       description:
-                        "A spreadsheet-ready file with amounts, categories, warnings, and approval dates.",
+                        "A spreadsheet-ready file with amounts, categories, warnings, and confirmation dates.",
                       tag: "CSV SPREADSHEET",
                     },
                     {
@@ -1519,12 +1519,12 @@ function Review({
                 disabled={
                   busy ||
                   dirty ||
-                  ["approved", "exported"].includes(receipt.state)
+                  ["confirmed", "exported"].includes(receipt.state)
                 }
                 onClick={() =>
                   action(async () => {
                     const r = await api<Receipt>(
-                      `/receipts/${receipt.id}/approve`,
+                      `/receipts/${receipt.id}/confirm`,
                       "POST",
                       { version: receipt.version, acknowledgeDuplicate: ack },
                     );
@@ -1533,13 +1533,13 @@ function Review({
                 }
               >
                 <Icon name="check" size={17} />
-                Approve receipt
+                Confirm receipt
               </button>
             </div>
             {dirty && (
               <small className="fine-print">
-                Save your changes before approving. Saving clears any previous
-                approval.
+                Save your changes before confirming. Saving clears any previous
+                confirmation.
               </small>
             )}
           </form>
@@ -1743,7 +1743,7 @@ function Settings({
           <p>
             Original files, extraction results and your corrections stay
             together until you delete them. Automatic extraction is advisory;
-            you approve the final record. Tax warnings do not determine GST/HST
+            you confirm the final record. Tax warnings do not determine GST/HST
             eligibility.
           </p>
           <p>
