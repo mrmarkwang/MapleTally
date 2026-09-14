@@ -1,4 +1,4 @@
-/** Browser contracts for receipt extraction, manual review, and auth with mocked hosted services. */
+/** Browser contracts for the actionable review shortcut, compact capture, extraction, manual review, and auth. */
 import { test, expect } from '@playwright/test';
 import sharp from 'sharp';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +11,7 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
       id: `receipt-${day}`,
       filename: `receipt-${day}.png`,
       mime: 'image/png',
-      state: day % 3 === 0 ? 'needs_review' : 'confirmed',
+      state: day === 12 ? 'duplicate_candidate' : day % 3 === 0 ? 'needs_review' : 'confirmed',
       fields: {
         merchant: `Merchant ${day}`,
         date: `2026-09-${String(day).padStart(2, '0')}`,
@@ -51,6 +51,21 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
   await page.getByLabel('Password', { exact: true }).fill('a very long password');
   await page.getByRole('button', { name: 'Create your account' }).click();
 
+  await page.getByLabel('Receipts from').fill('2026-09-08');
+  await page.getByLabel('Receipts to').fill('2026-09-10');
+  await page.getByLabel('Search receipts').fill('Merchant 9');
+  const reviewShortcut = page.getByRole('button', { name: 'Review 4 receipts', exact: true });
+  await expect(reviewShortcut).toBeVisible();
+  await reviewShortcut.click();
+  await expect(page.getByLabel('Receipt status')).toHaveText('2 statuses');
+  await expect(page.getByLabel('Receipts from')).toHaveValue('');
+  await expect(page.getByLabel('Receipts to')).toHaveValue('');
+  await expect(page.getByLabel('Search receipts')).toHaveValue('');
+  await expect(page.getByText('4 receipts', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 12/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 3/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Merchant 11/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reset filters' }).click();
   await expect(page.getByRole('button', { name: /Merchant 12/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Merchant 2/ })).toHaveCount(0);
   await page.screenshot({ path: `test-results/${info.project.name}-receipt-filters.png`, fullPage: true });
@@ -78,7 +93,7 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
   await page.getByLabel('Confirmed').check();
   await expect(page.getByRole('button', { name: /Merchant 11/ })).toBeVisible();
   await expect(page.getByText('9 receipts', { exact: true })).toBeVisible();
-  await page.getByLabel('Search receipts').click();
+  await page.getByRole('heading', { name: 'Your receipts', exact: true }).click();
   await expect(page.locator('.status-filter details')).not.toHaveAttribute('open', '');
 
   await page.getByLabel('Search receipts').fill('Merchant 11');
@@ -138,10 +153,18 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   await page.getByLabel('Password', { exact: true }).fill('my long test password');
   await page.getByRole('button', { name: 'Create your account' }).click();
   await expect(page.getByRole('heading', { name: 'Your receipts', exact: true })).toBeVisible();
-  expect((await page.locator('.capture-card').boundingBox())!.height).toBeLessThan(350);
+  const captureHeight = (await page.locator('.capture-card').boundingBox())!.height;
+  expect(captureHeight).toBeLessThan(info.project.name === 'mobile' ? 280 : 220);
+  const cameraChooserPromise = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Take a photo', exact: true }).click();
+  const cameraChooser = await cameraChooserPromise;
+  expect(await cameraChooser.element().getAttribute('capture')).toBe('environment');
   await page.screenshot({ path: `test-results/${info.project.name}-workspace.png`, fullPage: true });
   const bytes = await sharp(Buffer.from('<svg width="420" height="650" xmlns="http://www.w3.org/2000/svg"><rect width="420" height="650" fill="#fffdf8"/><g fill="#333" font-family="sans-serif"><text x="80" y="80" font-size="28">MAPLE CAFE</text><text x="80" y="140" font-size="18">September 12, 2026</text><text x="60" y="250" font-size="20">Subtotal             $10.00</text><text x="60" y="300" font-size="20">HST                     $1.30</text><text x="60" y="350" font-size="20">Tip                       $2.00</text><text x="60" y="430" font-size="24">TOTAL CAD      $13.30</text></g></svg>')).png().toBuffer();
-  await page.locator('input[type=file]').first().setInputFiles({ name: 'cafe.png', mimeType: 'image/png', buffer: bytes });
+  const addChooserPromise = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Add receipt', exact: true }).click();
+  const addChooser = await addChooserPromise;
+  await addChooser.setFiles({ name: 'cafe.png', mimeType: 'image/png', buffer: bytes });
   await expect(page.getByRole('heading', { name: 'Review receipt', exact: true })).toBeVisible();
   if (info.project.name === 'mobile') {
     const detailsBox = await page.locator('.review-fields').boundingBox();
@@ -150,7 +173,7 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
   }
   await page.getByRole('button', { name: 'Back to receipts' }).click();
   await expect(page.getByRole('button', { name: /cafe.png/ })).toContainText('failed', { timeout: 15000 });
-  await expect(page.locator('.stats > div').filter({hasText:'Ready for review'})).toContainText('0');
+  await expect(page.getByRole('button', { name: 'No receipts need review', exact: true })).toBeDisabled();
   await expect(page.getByText('1–1 of 1 receipt', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /cafe.png/ }).click();
   await expect(page.getByText('Automatic extraction is not configured.', { exact: false })).toBeVisible();

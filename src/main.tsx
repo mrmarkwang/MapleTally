@@ -1,5 +1,5 @@
 "use client";
-/** Responsive workspace with live extraction updates, direct uploads, and queued exports. */
+/** Responsive workspace with an actionable review shortcut, compact receipt capture, live extraction updates, and queued exports. */
 import React, { useEffect, useRef, useState } from "react";
 type Fields = {
   merchant: string;
@@ -579,9 +579,6 @@ export default function App() {
   const confirmed = rows.filter(isConfirmed);
   const inProgress = rows.filter((r) => IN_PROGRESS_STATES.has(r.state));
   const failed = rows.filter((r) => r.state === "failed");
-  const totalCad = confirmed
-    .filter((r) => r.fields.currency === "CAD")
-    .reduce((sum, r) => sum + (r.fields.total || 0), 0);
   const filteredRows = rows.filter(
     (r) =>
       (statusFilters.length === 0 || statusFilters.includes(r.state)) &&
@@ -732,56 +729,9 @@ export default function App() {
             />
           ) : page === "Receipts" ? (
             <>
-              <div className="page-heading">
-                <div>
-                  <span className="eyebrow">A CLEARER PICTURE</span>
-                  <h1>Your receipts</h1>
-                  <p>All the little expenses. One tidy place.</p>
-                </div>
-                <button
-                  className="button primary"
-                  disabled={progress !== null || !me.quota.canUpload}
-                  onClick={() => input.current?.click()}
-                >
-                  <Icon name="plus" size={18} />
-                  Add receipt
-                </button>
-              </div>
-              <div className="stats">
-                <div>
-                  <span>
-                    Total receipts <Icon name="receipts" size={18} />
-                  </span>
-                  <strong>
-                    {rows.length}
-                    <small>in your workspace</small>
-                  </strong>
-                </div>
-                <div>
-                  <span>
-                    Ready for review <span className="amber-dot" />
-                  </span>
-                  <strong>
-                    {needsReview.length}
-                    <small>
-                      {needsReview.length
-                        ? "a quick look goes a long way"
-                        : "nothing waiting on you"}
-                    </small>
-                  </strong>
-                </div>
-                <div>
-                  <span>
-                    Confirmed expenses <Icon name="check" size={18} />
-                  </span>
-                  <strong>
-                    {money(totalCad, "CAD")}
-                    <small>CAD · {confirmed.length} confirmed records</small>
-                  </strong>
-                </div>
-              </div>
               <section
                 className={`capture-card ${dragging ? "dragging" : ""}`}
+                aria-label="Receipt overview and upload"
                 onDragOver={(e) => {
                   e.preventDefault();
                   setDragging(true);
@@ -794,39 +744,46 @@ export default function App() {
                     void uploadFile(e.dataTransfer.files[0]);
                 }}
               >
-                <div className="capture-symbol">
-                  <Icon name="upload" size={24} />
-                </div>
-                <div>
-                  <h2>
-                    {progress === null
-                      ? "From your pocket to your books."
-                      : `Uploading your receipt… ${progress}%`}
-                  </h2>
-                  <p>
-                    {progress === null
-                      ? "Drop a receipt here, or choose a photo or PDF. We’ll help with the details."
-                      : "Keep this page open. Your original will be saved securely."}
-                  </p>
-                  <span className="capture-meta">
-                    JPG, PNG, WebP, HEIC & PDF <span>·</span> Up to 10 MB per
-                    receipt
-                  </span>
-                  {progress !== null && (
-                    <progress
-                      max={100}
-                      value={progress}
-                      aria-label="Upload progress"
-                    />
-                  )}
+                <div className="receipt-overview">
+                  <span className="eyebrow">A CLEARER PICTURE</span>
+                  <h1>Your receipts</h1>
+                  <p>Capture, review, and keep every expense in one place.</p>
+                  <button
+                    className="review-summary"
+                    disabled={needsReview.length === 0}
+                    onClick={() => {
+                      setStatusFilters(Array.from(REVIEW_READY_STATES));
+                      setDateFrom("");
+                      setDateTo("");
+                      setSearch("");
+                      setReceiptPage(1);
+                    }}
+                    aria-label={
+                      needsReview.length === 0
+                        ? "No receipts need review"
+                        : `Review ${needsReview.length} ${needsReview.length === 1 ? "receipt" : "receipts"}`
+                    }
+                  >
+                    <strong>{needsReview.length}</strong>
+                    <span>
+                      {needsReview.length === 1 ? "receipt" : "receipts"} to
+                      review
+                    </span>
+                    {needsReview.length > 0 ? (
+                      <Icon name="arrow" size={15} />
+                    ) : (
+                      <Icon name="check" size={15} />
+                    )}
+                  </button>
                 </div>
                 <div className="capture-actions">
                   <button
-                    className="button secondary"
+                    className="button primary"
                     disabled={progress !== null || !me.quota.canUpload}
                     onClick={() => input.current?.click()}
                   >
-                    Choose a file
+                    <Icon name="plus" size={18} />
+                    Add receipt
                   </button>
                   <button
                     className="text-button camera-button"
@@ -835,6 +792,18 @@ export default function App() {
                   >
                     Take a photo
                   </button>
+                  <span className="capture-meta">
+                    {progress === null
+                      ? "or drop a JPG, PNG, WebP, HEIC, or PDF · 10 MB max"
+                      : `Uploading… ${progress}%`}
+                  </span>
+                  {progress !== null && (
+                    <progress
+                      max={100}
+                      value={progress}
+                      aria-label="Upload progress"
+                    />
+                  )}
                 </div>
               </section>
               {retryFile && progress === null && (

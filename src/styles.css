@@ -1,4 +1,4 @@
-/* Calm, paper-inspired workspace with responsive receipt review and accessible controls. */
+/* Calm, paper-inspired workspace with an actionable review shortcut, compact receipt capture, and accessible controls. */
 .export-job { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 0; border-bottom:1px solid #e3e7df; }
 .export-job small { display:block; color:#943e29; }
 :root {
@@ -634,104 +634,80 @@ nav button:hover {
 .page-heading .button {
   align-self: center;
 }
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  border: 1px solid var(--border);
-  background: #fff;
-  border-radius: 9px;
-  margin-bottom: 25px;
-  overflow: hidden;
+.receipt-overview {
+  min-width: 0;
 }
-.stats > div {
-  padding: 20px 23px;
-}
-.stats > div + div {
-  border-left: 1px solid var(--border);
-}
-.stats > div > span {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #65705f;
-}
-.stats svg {
-  color: #a2ad95;
-}
-.stats strong {
-  display: block;
-  font-family: "Manrope", sans-serif;
-  font-weight: 600;
+.receipt-overview h1 {
   font-size: 30px;
-  letter-spacing: -1px;
-  margin-top: 8px;
-}
-.stats small {
-  font-family: "DM Sans", sans-serif;
-  font-weight: 400;
-  font-size: 11px;
-  letter-spacing: 0;
-  color: #687363;
-  display: block;
+  letter-spacing: -1.1px;
   margin-top: 4px;
 }
-.capture-card {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  background: #f0f3e8;
-  border: 1px dashed #cbd5bd;
-  border-radius: 9px;
-  padding: 25px;
-  margin-bottom: 32px;
-}
-.capture-symbol {
-  width: 49px;
-  height: 49px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: #e2e9d5;
-  border: 1px solid #d9e1cb;
-  border-radius: 10px;
-  color: #799064;
-}
-.capture-card h2 {
-  font-size: 15px;
-  letter-spacing: -0.3px;
-  color: #475a3e;
-}
-.capture-card p {
-  font-size: 12px;
-  color: #687461;
+.receipt-overview > p {
   margin-top: 5px;
+  font-size: 12px;
+}
+.review-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #687363;
+  font-size: 11px;
+}
+.review-summary strong {
+  font-family: "Manrope", sans-serif;
+  color: #304137;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.7px;
+}
+.review-summary svg {
+  color: #648151;
+}
+.review-summary:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.capture-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(215px, 290px);
+  align-items: center;
+  gap: 28px;
+  background: #f4f6ef;
+  border: 1px dashed #c8d2bb;
+  border-radius: 10px;
+  padding: 22px 25px;
+  margin-bottom: 20px;
 }
 .capture-meta {
   font-size: 11px;
   color: #707969;
   display: block;
-  margin-top: 11px;
-  letter-spacing: 0.15px;
-}
-.capture-meta > span {
-  margin: 0 7px;
+  line-height: 1.45;
 }
 .capture-actions {
-  margin-left: auto;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 5px 14px;
+  padding-left: 28px;
+  border-left: 1px solid #dce3d3;
 }
 .capture-actions .button {
   font-size: 12px;
-  min-height: 37px;
-  padding: 8px 14px;
+  min-height: 40px;
+  padding: 9px 15px;
 }
 .camera-button {
   font-size: 12px;
+}
+.capture-actions .capture-meta {
+  flex-basis: 100%;
+  text-align: right;
 }
 .dragging {
   background: #dfe9d2;
@@ -741,7 +717,7 @@ nav button:hover {
   display: block;
   width: 100%;
   height: 6px;
-  margin-top: 15px;
+  margin-top: 4px;
   accent-color: var(--green);
 }
 .retry {
@@ -1385,10 +1361,7 @@ nav button:hover {
     margin-bottom: 35px;
   }
   .capture-card {
-    padding: 30px;
-  }
-  .stats > div {
-    padding: 24px;
+    padding: 24px 28px;
   }
   .empty-state {
     min-height: 350px;
@@ -1419,15 +1392,12 @@ nav button:hover {
     padding-left: 15px;
     padding-right: 15px;
   }
-  .stats strong {
-    font-size: 26px;
-  }
   .capture-card {
-    gap: 12px;
+    gap: 20px;
     padding: 20px;
   }
-  .capture-card p {
-    max-width: 290px;
+  .capture-actions {
+    padding-left: 20px;
   }
   .export-grid {
     gap: 12px;
@@ -1473,21 +1443,18 @@ nav button:hover {
   .topbar {
     padding: 0 20px;
   }
-  .stats > div {
-    padding: 15px;
-  }
-  .stats small {
-    font-size: 11px;
-  }
-  .stats strong {
-    font-size: 23px;
-  }
   .capture-card {
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
+    gap: 18px;
   }
   .capture-actions {
-    flex-direction: row;
-    margin-left: 61px;
+    justify-content: flex-start;
+    padding: 15px 0 0;
+    border-left: 0;
+    border-top: 1px solid #dce3d3;
+  }
+  .capture-actions .capture-meta {
+    text-align: left;
   }
   .table-head,
   .receipt-row {
@@ -1697,68 +1664,31 @@ nav button:hover {
   .page-heading .button svg {
     width: 14px;
   }
-  .stats {
-    margin-bottom: 20px;
-    gap: 0;
-  }
-  .stats > div {
-    padding: 13px 11px;
-  }
-  .stats > div > span {
-    font-size: 11px;
-    min-height: 27px;
-    align-items: flex-start;
-    gap: 5px;
-  }
-  .stats > div > span svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-  }
-  .stats strong {
-    font-size: 23px;
-    margin-top: 5px;
-  }
-  .stats > div:last-child strong {
-    font-size: 20px;
-    padding-top: 4px;
-  }
-  .stats small {
-    font-size: 10px;
-    line-height: 1.4;
-    min-height: 23px;
-    margin-top: 5px;
-    letter-spacing: 0;
-  }
   .capture-card {
+    grid-template-columns: 1fr;
+    gap: 18px;
     padding: 18px;
-    gap: 12px;
-    margin-bottom: 24px;
-    display: grid;
-    grid-template-columns: 39px minmax(0, 1fr);
+    margin-bottom: 18px;
   }
-  .capture-symbol {
-    width: 39px;
-    height: 42px;
+  .receipt-overview h1 {
+    font-size: 27px;
   }
-  .capture-card > div:nth-child(2) {
-    flex: 1;
-    min-width: 0;
+  .receipt-overview > p {
+    max-width: none;
   }
-  .capture-card h2 {
-    font-size: 13px;
-  }
-  .capture-card p {
-    font-size: 11px;
-  }
-  .capture-meta {
-    font-size: 10px;
+  .review-summary {
+    margin-top: 15px;
   }
   .capture-actions {
-    grid-column: 2;
-    margin-left: 0;
-    flex-wrap: wrap;
-    gap: 17px;
+    justify-content: flex-start;
+    gap: 5px 16px;
+    padding: 15px 0 0;
+    border-left: 0;
+    border-top: 1px solid #dce3d3;
+  }
+  .capture-actions .capture-meta {
+    text-align: left;
+    font-size: 10px;
   }
   .list-toolbar {
     padding: 12px;
