@@ -1,4 +1,4 @@
-/** Idempotent receipt ingestion shared by direct uploads and lease-fenced email intake. */
+/** Receipt ingestion plus strict live and backward-compatible immutable-export views. */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { checked, rpc, type Row } from "./supabase";
 import { Storage, validateFile, digest, removeOrDefer } from "./storage";
@@ -6,6 +6,15 @@ import { emptyFields, HttpError } from "./domain";
 export function view(r: Row) {
   const { object_key, hash, duplicate_key, workspace_id, ...publicFields } = r;
   return publicFields;
+}
+export function exportSnapshotView(r: Row) {
+  const publicFields = view(r);
+  const { approved_at, ...currentFields } = publicFields;
+  return {
+    ...currentFields,
+    state: currentFields.state === "approved" ? "confirmed" : currentFields.state,
+    confirmed_at: currentFields.confirmed_at ?? approved_at ?? null,
+  };
 }
 export async function completeUpload(
   db: SupabaseClient,

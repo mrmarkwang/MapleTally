@@ -1,16 +1,29 @@
-/** Execute the real migration in embedded PostgreSQL, including RLS and worker fencing regressions. */
+/** Execute fresh and legacy-upgrade migrations in embedded PostgreSQL, including RLS, confirmation, and worker-fencing regressions. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { emptyFields, duplicateKey, warnings } from "../server/domain";
-const migration = readFileSync(
+const initialMigration = readFileSync(
   new URL(
     "../supabase/migrations/202609130001_mapletally.sql",
     import.meta.url,
   ),
   "utf8",
 );
+const confirmationRepair = readFileSync(
+  new URL(
+    "../supabase/migrations/202609140001_repair_receipt_confirmation.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const migration = `${initialMigration}\n${confirmationRepair}`;
+const legacyMigration = initialMigration
+  .replaceAll("confirmed_at", "approved_at")
+  .replaceAll("confirm_receipt", "approve_receipt")
+  .replaceAll("'confirmed'", "'approved'")
+  .replaceAll("confirmation", "approval");
 const owner = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
 const fields = {
@@ -23,6 +36,9 @@ const fields = {
   total: 1330,
 };
 async function setup(t: any) {
+  return setupWithMigration(t, migration);
+}
+async function setupWithMigration(t: any, sql: string) {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
@@ -32,7 +48,7 @@ async function setup(t: any) {
     create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);
     grant usage on schema public,auth to authenticated,service_role,anon;
   `);
-  await db.exec(migration);
+  await db.exec(sql);
   await db.query(
     "insert into auth.users(id,raw_user_meta_data) values($1,$2),($3,$2)",
     [owner, { business: "My studio" }, other],
@@ -103,6 +119,179 @@ test("migration creates private buckets and Auth-triggered workspaces; RLS isola
     0,
   );
   await db.exec("reset role");
+});
+test("confirmation repair upgrades legacy data, RPCs, privileges and active exports", async (t) => {
+  const { db, w } = await setupWithMigration(t, legacyMigration);
+  const captured = await receipt(db, w);
+  const edited = await call(db, "edit_receipt", [
+    w.id,
+    captured.id,
+    captured.version,
+    fields,
+    [],
+    duplicateKey(fields),
+  ]);
+  const approved = await call(db, "approve_receipt", [
+    w.id,
+    captured.id,
+    edited.version,
+    false,
+  ]);
+  const exportId = await call(db, "create_export", [w.id, "csv"]);
+  const activeToken = "33333333-3333-4333-8333-333333333333";
+  await db.query(
+    "update public.jobs set status='running',attempts=3,lease_token=$1,lease_until=now()+interval '10 minutes' where kind='export' and target=$2",
+    [activeToken, exportId],
+  );
+  await db.query(
+    "update public.exports set status='processing' where id=$1",
+    [exportId],
+  );
+  const activeExport = (
+    await db.query<any>("select * from public.exports where id=$1", [exportId])
+  ).rows[0];
+  const activeJob = (
+    await db.query<any>("select * from public.jobs where target=$1", [exportId])
+  ).rows[0];
+  const failedExport = (
+    await db.query<any>(
+      "insert into public.exports(workspace_id,format,snapshot,status) values($1,'pdf',$2,'failed') returning *",
+      [w.id, activeExport.snapshot],
+    )
+  ).rows[0];
+  const completeExport = (
+    await db.query<any>(
+      "insert into public.exports(workspace_id,format,snapshot,status,object_key) values($1,'zip',$2,'complete','existing.zip') returning *",
+      [w.id, activeExport.snapshot],
+    )
+  ).rows[0];
+  const before = (
+    await db.query<any>(
+      "select id,fields,version,approved_at,created,updated,duplicate_key,duplicate_of,duplicate_ack from public.receipts where id=$1",
+      [approved.id],
+    )
+  ).rows[0];
+
+  await db.exec(confirmationRepair);
+
+  const after = (
+    await db.query<any>(
+      "select id,state,fields,version,confirmed_at,created,updated,duplicate_key,duplicate_of,duplicate_ack from public.receipts where id=$1",
+      [approved.id],
+    )
+  ).rows[0];
+  assert.equal(after.state, "confirmed");
+  const { approved_at: legacyApprovedAt, ...preservedBefore } = before;
+  assert.deepEqual(
+    {
+      id: after.id,
+      fields: after.fields,
+      version: after.version,
+      confirmed_at: after.confirmed_at,
+      created: after.created,
+      updated: after.updated,
+      duplicate_key: after.duplicate_key,
+      duplicate_of: after.duplicate_of,
+      duplicate_ack: after.duplicate_ack,
+    },
+    { ...preservedBefore, confirmed_at: legacyApprovedAt },
+  );
+  await assert.rejects(
+    db.query("update public.receipts set state='approved' where id=$1", [approved.id]),
+    /receipts_state_check/,
+  );
+
+  const repairedExport = (
+    await db.query<any>("select * from public.exports where id=$1", [exportId])
+  ).rows[0];
+  assert.deepEqual(repairedExport, activeExport);
+  assert.deepEqual(
+    (await db.query<any>("select * from public.exports where id=$1", [failedExport.id])).rows[0],
+    failedExport,
+  );
+  assert.deepEqual(
+    (await db.query<any>("select * from public.exports where id=$1", [completeExport.id])).rows[0],
+    completeExport,
+  );
+  const repairedJob = (
+    await db.query<any>("select * from public.jobs where target=$1", [exportId])
+  ).rows[0];
+  assert.deepEqual(repairedJob, activeJob);
+
+  assert.equal(
+    (
+      await db.query<any>(
+        "select to_regprocedure('public.approve_receipt(uuid,uuid,integer,boolean)') is null missing",
+      )
+    ).rows[0].missing,
+    true,
+  );
+  assert.notEqual(
+    (
+      await db.query<any>(
+        "select to_regprocedure('public.confirm_receipt(uuid,uuid,integer,boolean)') signature",
+      )
+    ).rows[0].signature,
+    null,
+  );
+  for (const signature of [
+    "public.edit_receipt(uuid,uuid,integer,jsonb,jsonb,text)",
+    "public.confirm_receipt(uuid,uuid,integer,boolean)",
+    "public.complete_export_job(uuid,uuid,text)",
+  ]) {
+    const privileges = (
+      await db.query<any>(
+        "select has_function_privilege('service_role',$1,'EXECUTE') service,has_function_privilege('authenticated',$1,'EXECUTE') authenticated,has_function_privilege('anon',$1,'EXECUTE') anon",
+        [signature],
+      )
+    ).rows[0];
+    assert.deepEqual(privileges, {
+      service: true,
+      authenticated: false,
+      anon: false,
+    });
+  }
+
+  assert.equal(
+    await call(db, "complete_export_job", [
+      repairedJob.id,
+      activeToken,
+      "current.csv",
+    ]),
+    true,
+  );
+  assert.equal(
+    (await db.query<any>("select state from public.receipts where id=$1", [approved.id])).rows[0].state,
+    "exported",
+  );
+
+  const postExportEdit = await call(db, "edit_receipt", [
+    w.id,
+    approved.id,
+    approved.version,
+    { ...fields, category: "Office supplies" },
+    [],
+    duplicateKey(fields),
+  ]);
+  assert.equal(postExportEdit.confirmed_at, null);
+  const confirmed = await call(db, "confirm_receipt", [
+    w.id,
+    approved.id,
+    postExportEdit.version,
+    false,
+  ]);
+  assert.equal(confirmed.state, "confirmed");
+  assert.ok(confirmed.confirmed_at);
+  const reedited = await call(db, "edit_receipt", [
+    w.id,
+    approved.id,
+    confirmed.version,
+    fields,
+    [],
+    duplicateKey(fields),
+  ]);
+  assert.equal(reedited.state, "needs_review");
+  assert.equal(reedited.confirmed_at, null);
 });
 test("upload reservations enforce quota and hash deduplication only consumes one receipt", async (t) => {
   const { db, w } = await setup(t);

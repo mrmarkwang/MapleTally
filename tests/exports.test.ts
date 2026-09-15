@@ -1,4 +1,4 @@
-/** Direct-to-Storage ZIP/PDF generation: artifacts bypass response bodies and ephemeral disk. */
+/** Direct-to-Storage exports preserve originals and normalize only immutable legacy snapshots. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -6,6 +6,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { unzipSync, strFromU8 } from "fflate";
 import { processExport } from "../server/worker";
 import { emptyFields } from "../server/domain";
+import { exportSnapshotView, view } from "../server/receipts";
+test("only export snapshots normalize legacy confirmation terminology", () => {
+  const legacy = { state: "approved", approved_at: "2026-09-13" };
+  assert.deepEqual(view(legacy), legacy);
+  assert.deepEqual(exportSnapshotView(legacy), {
+    state: "confirmed",
+    confirmed_at: "2026-09-13",
+  });
+});
 test("export worker streams a ZIP larger than 4.5 MB into private Storage with exact originals", async () => {
   const original = randomBytes(5 * 1024 * 1024);
   const fields = {
@@ -24,8 +33,8 @@ test("export worker streams a ZIP larger than 4.5 MB into private Storage with e
       fields,
       original: fields,
       warnings: ["Check tax"],
-      state: "confirmed",
-      confirmed_at: "2026-09-13",
+      state: "approved",
+      approved_at: "2026-09-13",
       version: 2,
       revisions: [],
     },
