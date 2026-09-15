@@ -8,7 +8,7 @@ import { Storage, removeOrDefer } from "./storage";
 import { warnings, duplicateKey } from "./domain";
 import { OpenAIExtractor, type Extractor, Mailer } from "./providers";
 import { exportCsv, exportPdf } from "./exports";
-import { completeUpload, exportSnapshotView } from "./receipts";
+import { completeUpload, view } from "./receipts";
 export function mailer() {
   return new Mailer(
     process.env.MAILGUN_DOMAIN || "",
@@ -130,7 +130,7 @@ export async function processExport(db: SupabaseClient, job: Row) {
   const storage = new Storage(db);
   const key = `${job.workspace_id}/${e.id}/${job.lease_token}.${e.format}`;
   const rows: Row[] = e.snapshot;
-  const publicRows = rows.map(exportSnapshotView);
+  const publicRows = rows.map(view);
   const csv = exportCsv(publicRows);
   if (e.format === "csv")
     await storage.put("exports", key, Buffer.from(csv), "text/csv");
