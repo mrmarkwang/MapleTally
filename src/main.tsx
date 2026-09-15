@@ -65,6 +65,17 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Failed",
 };
 const RECEIPT_FILTERS_STORAGE_KEY = "mapletally.receiptFilters";
+const PRO_FEATURES = [
+  "每月 200 张收据",
+  "专属转发邮箱",
+  "PDF 和 ZIP 完整导出",
+  "原图长期保存",
+  "重复/漏单检测",
+  "GST/HST/PST/QST 异常检查",
+  "银行/信用卡 CSV 匹配",
+  "会计师只读共享",
+  "优先处理和客服",
+];
 
 function isConfirmed(receipt: Receipt) {
   return CONFIRMED_STATES.has(receipt.state);
@@ -654,9 +665,7 @@ export default function App() {
           <div className="allowance">
             <div>
               <span>
-                {me.quota.plan === "paid"
-                  ? "Business plan"
-                  : "A little room to grow"}
+                {me.quota.plan === "paid" ? "Pro plan" : "Free plan"}
               </span>
               <Icon name="leaf" size={17} />
             </div>
@@ -1138,13 +1147,19 @@ export default function App() {
                     <h2>{x.label}</h2>
                     <p>{x.description}</p>
                     <button
-                      disabled={actionBusy || !rows.length}
+                      disabled={
+                        actionBusy ||
+                        !rows.length ||
+                        (me.quota.plan !== "paid" && x.format !== "csv")
+                      }
                       className={`button ${x.format === "zip" ? "primary" : "secondary"}`}
                       onClick={() => download(x.format)}
                     >
-                      {actionBusy
-                        ? "Preparing…"
-                        : `Prepare ${x.format.toUpperCase()}`}
+                      {me.quota.plan !== "paid" && x.format !== "csv"
+                        ? "Available with Pro"
+                        : actionBusy
+                          ? "Preparing…"
+                          : `Prepare ${x.format.toUpperCase()}`}
                       <Icon name="export" size={16} />
                     </button>
                   </section>
@@ -1659,14 +1674,39 @@ function Settings({
           </button>
         </section>
         <section className="settings-card">
-          <h2>
-            {me.quota.plan === "paid" ? "Business plan" : "Free allowance"}
-          </h2>
+          <span className="eyebrow">PLANS</span>
+          <h2>{me.quota.plan === "paid" ? "Pro plan" : "Free plan"}</h2>
           <p>
-            {me.quota.used} of {me.quota.limit} receipts used {me.quota.period}.
-            Business includes 500 receipts per month. The subscription price is
-            shown at checkout.
+            {me.quota.used} of {me.quota.limit} receipts used this month.
           </p>
+          <div className="plan-grid">
+            <div className={me.quota.plan === "free" ? "plan active" : "plan"}>
+              <div className="plan-heading">
+                <strong>Free</strong>
+                <span>Free forever</span>
+              </div>
+              <p>Core receipt capture for light use and trying MapleTally.</p>
+              <ul>
+                <li>20 receipts per month</li>
+                <li>Image/PDF upload, OCR and AI extraction</li>
+                <li>GST/HST checks, editing and CSV export</li>
+                <li>12 months of records</li>
+                <li>No credit card required</li>
+              </ul>
+            </div>
+            <div className={me.quota.plan === "paid" ? "plan active" : "plan"}>
+              <div className="plan-heading">
+                <strong>Pro</strong>
+                <span>CAD $12.99/mo · $119/yr</span>
+              </div>
+              <p>More automation and a complete handoff for your accountant.</p>
+              <ul>
+                {PRO_FEATURES.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
           {me.hasCustomer ? (
             <button
               className="button primary"

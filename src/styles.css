@@ -1364,6 +1364,54 @@ nav button:hover {
 .settings-card h2 {
   font-size: 19px;
 }
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.plan {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fbfcf8;
+}
+.plan.active {
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.plan-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plan-heading strong {
+  font-size: 17px;
+}
+.plan-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+.plan p {
+  min-height: 44px;
+  margin: 10px 0;
+}
+.plan ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: 12px;
+  list-style: none;
+}
+.plan li::before {
+  margin-right: 7px;
+  color: var(--green);
+  content: "✓";
+}
 @media (min-width: 1450px) {
   .content {
     padding-top: 48px;
@@ -1821,6 +1869,9 @@ nav button:hover {
   }
   .settings-card {
     padding: 20px;
+  }
+  .plan-grid {
+    grid-template-columns: 1fr;
   }
   .settings-card p {
     font-size: 12px;
