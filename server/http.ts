@@ -463,13 +463,12 @@ async function dispatch(req: NextRequest): Promise<Response> {
     const { format } = z
       .object({ format: z.enum(["csv", "pdf", "zip"]) })
       .parse(await body(req));
-    return json(
-      {
-        id: await rpc(db, "create_export", { w: w.id, output_format: format }),
-        status: "queued",
-      },
-      202,
-    );
+    const id = await rpc(db, "create_export", {
+      w: w.id,
+      output_format: format,
+    });
+    kickWorker(db);
+    return json({ id, status: "queued" }, 202);
   }
   if (path === "/exports" && method === "GET")
     return json(
