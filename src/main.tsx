@@ -1241,10 +1241,11 @@ function Review({
   const dirty = JSON.stringify(fields) !== JSON.stringify(receipt.fields);
   function fieldLabel(key: keyof Fields, label: string) {
     const confidence = receipt.confidence[key];
+    const missingOptionalTip = key === "tip" && fields.tip === null;
     return (
       <span className="field-label">
         <span>{label}</span>
-        {confidence !== undefined && confidence < 0.8 && (
+        {confidence !== undefined && confidence < 0.8 && !missingOptionalTip && (
           <small className="low-confidence">
             Check this field · {Math.round(confidence * 100)}% confidence
           </small>
@@ -1441,7 +1442,13 @@ function Review({
                           ? "Sales tax"
                           : k[0].toUpperCase() + k.slice(1)
                       }
-                      value={fields[k] === null ? "" : fields[k]! / 100}
+                      value={
+                        fields[k] === null
+                          ? k === "tip"
+                            ? "0.00"
+                            : ""
+                          : fields[k]! / 100
+                      }
                       placeholder="Unknown"
                       onChange={(e) =>
                         setField(
@@ -1456,18 +1463,6 @@ function Review({
                 </label>
               ))}
             </div>
-            {receipt.warnings.length > 0 && (
-              <div className="warning-list">
-                <strong>A few things to check</strong>
-                {receipt.warnings.map((w) => (
-                  <p key={w}>{w}</p>
-                ))}
-                <small>
-                  Arithmetic checks only. GST/HST treatment should be confirmed
-                  with your accountant.
-                </small>
-              </div>
-            )}
             {receipt.duplicate_of && (
               <label className="checkbox">
                 <input
@@ -1522,32 +1517,6 @@ function Review({
               </small>
             )}
           </form>
-          {process.env.NODE_ENV === "development" && receipt.original && (
-            <details className="extraction-details">
-              <summary>View the original extraction</summary>
-              <dl>
-                {Object.entries(receipt.original).map(([k, v]) => (
-                  <div key={k}>
-                    <dt>{k}</dt>
-                    <dd>
-                      {v === null
-                        ? "Unknown"
-                        : ["subtotal", "tax", "tip", "total"].includes(k)
-                          ? money(Number(v), receipt.original!.currency)
-                          : String(v)}
-                      {receipt.confidence[k] !== undefined && (
-                        <small>
-                          {" "}
-                          · {Math.round(receipt.confidence[k] * 100)}%
-                          confidence
-                        </small>
-                      )}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          )}
           <div className="delete-receipt">
             {deleting ? (
               <>
