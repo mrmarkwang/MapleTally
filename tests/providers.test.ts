@@ -7,6 +7,7 @@ import { validateFile, sign } from "../server/storage";
 import { Mailer, OpenAIExtractor, type Extractor } from "../server/providers";
 import { mailgunUrl, runJob } from "../server/worker";
 import { completeUpload } from "../server/receipts";
+import { normalizeFields } from "../server/domain";
 test("upload validation inspects actual bytes and enforces size limits", async () => {
   const image = await sharp({
     create: { width: 10, height: 10, channels: 3, background: "#fff" },
@@ -119,7 +120,7 @@ test("receipt worker persists extracted fields and metadata", async () => {
       assert.equal(data.toString(), "receipt");
       assert.equal(mime, "image/jpeg");
       return {
-        fields,
+        fields: normalizeFields(fields),
         confidence: { merchant: 0.99, total: 0.98 },
         raw: { id: "response-id" },
         usage: { input_tokens: 42 },
@@ -131,7 +132,7 @@ test("receipt worker persists extracted fields and metadata", async () => {
     kind: "receipt",
   });
   const completed = calls.find((call) => call.name === "complete_receipt_job");
-  assert.deepEqual(completed?.args.extracted, fields);
+  assert.deepEqual(completed?.args.extracted, normalizeFields(fields));
   assert.deepEqual(completed?.args.confidence, {
     merchant: 0.99,
     total: 0.98,

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { sessionClient } from "../src/lib/supabase/server";
 import { adminClient, checked, listAll, rpc } from "./supabase";
-import { fieldsSchema, warnings, duplicateKey, HttpError } from "./domain";
+import { fieldsSchema, warnings, duplicateKey, HttpError, normalizeFields, TAX_TYPES } from "./domain";
 import { Storage, equal, digest, cleanupStorage } from "./storage";
 import { completeUpload, view } from "./receipts";
 import { Billing } from "./providers";
@@ -356,8 +356,30 @@ async function dispatch(req: NextRequest): Promise<Response> {
           .limit(20),
       ),
     });
-  if (path === "/receipts" && method === "GET")
-    return json((await listAll(db, "receipts", w.id)).reverse().map(view));
+  if (path === "/receipts" && method === "GET") {
+    const values = await listAll(db, "receipts", w.id);
+    const matches = (r: any) => {
+      const f = normalizeFields(r.fields);
+      const params = req.nextUrl.searchParams;
+      const taxYears = params.getAll("taxYear");
+      const months = params.getAll("month");
+      const categories = params.getAll("category");
+      const provinces = params.getAll("province");
+      const taxTypes = params.getAll("taxType");
+      const usages = params.getAll("usage");
+      const reviewStatuses = params.getAll("reviewStatus");
+      const vendors = params.getAll("vendor").map((value) => value.toLowerCase());
+      return (!taxYears.length || taxYears.includes(String(f.tax_year)))
+        && (!months.length || months.includes(f.date.slice(0, 7)) || months.includes(f.date.slice(5, 7)))
+        && (!categories.length || categories.includes(f.category))
+        && (!provinces.length || provinces.includes(f.province))
+        && (!taxTypes.length || taxTypes.some((key) => TAX_TYPES.includes(key as typeof TAX_TYPES[number]) && f[key as typeof TAX_TYPES[number]] !== null))
+        && (!usages.length || usages.includes(f.business_or_personal))
+        && (!reviewStatuses.length || reviewStatuses.includes(f.review_status) || reviewStatuses.includes(r.state))
+        && (!vendors.length || vendors.some((vendor) => f.merchant.toLowerCase().includes(vendor)));
+    };
+    return json(values.filter(matches).reverse().map(view));
+  }
   if (path === "/uploads" && method === "POST") {
     const input = z
       .object({

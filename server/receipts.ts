@@ -1,11 +1,14 @@
-/** Receipt ingestion plus strict live and backward-compatible immutable-export views. */
+/** Receipt ingestion plus strict live and backward-compatible immutable-export views. Legacy fields are normalized without guessing tax types. */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { checked, rpc, type Row } from "./supabase";
 import { Storage, validateFile, digest, removeOrDefer } from "./storage";
-import { emptyFields, HttpError } from "./domain";
+import { emptyFields, HttpError, normalizeFields } from "./domain";
 export function view(r: Row) {
   const { object_key, hash, duplicate_key, workspace_id, ...publicFields } = r;
-  return publicFields;
+  return {
+    ...publicFields,
+    fields: normalizeFields(publicFields.fields),
+  };
 }
 export async function completeUpload(
   db: SupabaseClient,

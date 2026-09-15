@@ -25,7 +25,14 @@ const staleUploadRepair = readFileSync(
   ),
   "utf8",
 );
-const migration = `${initialMigration}\n${confirmationRepair}\n${staleUploadRepair}`;
+const taxReadyMigration = readFileSync(
+  new URL(
+    "../supabase/migrations/202609190001_canadian_tax_ready_receipts.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const migration = `${initialMigration}\n${confirmationRepair}\n${staleUploadRepair}\n${taxReadyMigration}`;
 const legacyMigration = initialMigration
   .replaceAll("confirmed_at", "approved_at")
   .replaceAll("confirm_receipt", "approve_receipt")

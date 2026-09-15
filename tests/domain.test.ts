@@ -1,8 +1,8 @@
 /** Domain regressions: money, unknowns, refunds, invalid dates and export formula injection. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fieldsSchema, emptyFields, warnings, duplicateKey, csvCell } from '../server/domain.js';
-const f = { ...emptyFields(), merchant: 'Maple Café', date: '2026-09-12', subtotal: 1000, tax: 130, tip: 200, total: 1330 };
+import { fieldsSchema, emptyFields, warnings, duplicateKey, csvCell, normalizeFields, allocation } from '../server/domain.js';
+const f = { ...emptyFields(), merchant: 'Maple Café', date: '2026-09-12', subtotal: 1000, tax: 130, tip: 200, total: 1330, category: 'Office Supplies' as const };
 test('integer cents preserve arithmetic and two-cent rounding tolerance', () => {
   assert.deepEqual(warnings(f), []);
   assert.equal(warnings({ ...f, total: 1332 }).length, 0);
@@ -28,4 +28,24 @@ test('CSV neutralizes formulas and escapes quotes and embedded newlines', () => 
   assert.equal(csvCell('=HYPERLINK("evil")'), '"\'=HYPERLINK(""evil"")"');
   assert.equal(csvCell('  +123'), '"\'  +123"');
   assert.equal(csvCell('a,b\nc'), '"a,b\nc"');
+});
+test('tax-ready normalization keeps legacy tax type unknown and derives tax year', () => {
+  const fields = normalizeFields({ ...emptyFields(), merchant: 'Legacy shop', date: '2025-03-01', tax: 130, total: 1130 });
+  assert.equal(fields.tax, 130);
+  assert.equal(fields.gst, null);
+  assert.equal(fields.hst, null);
+  assert.equal(fields.tax_year, 2025);
+  assert.equal(normalizeFields({ ...emptyFields(), date: '' }).tax_year, 'Unknown');
+});
+test('Mixed Use allocation preserves total cents and requires an explicit percentage', () => {
+  assert.deepEqual(allocation(1000, 'Mixed Use', 65), { business_amount: 650, personal_amount: 350 });
+  assert.deepEqual(allocation(1001, 'Mixed Use', 50), { business_amount: 501, personal_amount: 500 });
+  assert.deepEqual(allocation(1000, 'Mixed Use', null), { business_amount: null, personal_amount: null });
+  const parsed = fieldsSchema.parse({ ...emptyFields(), merchant: 'Studio', date: '2026-01-01', total: 1000, business_or_personal: 'Mixed Use', business_use_percent: 25, category: 'Office Expenses' });
+  assert.deepEqual([parsed.business_amount, parsed.personal_amount], [250, 750]);
+});
+test('unresolved category and Mixed Use are review warnings', () => {
+  const fields = normalizeFields({ ...emptyFields(), merchant: 'Unknown', date: '2026-01-01', total: 1000, business_or_personal: 'Mixed Use' });
+  assert.ok(warnings(fields).some((warning) => warning.includes('category')));
+  assert.ok(warnings(fields).some((warning) => warning.includes('Mixed Use')));
 });

@@ -1,5 +1,5 @@
 "use client";
-/** Responsive workspace with an actionable review shortcut, compact receipt capture, live extraction updates, and queued exports. */
+/** Responsive T1/T2125 preparation workspace with receipt review, Canadian tax fields, business-use allocation, and qualified exports. */
 import React, { useEffect, useRef, useState } from "react";
 type Fields = {
   merchant: string;
@@ -10,6 +10,22 @@ type Fields = {
   total: number | null;
   currency: string;
   category: string;
+  payment_method: string;
+  province: string;
+  tax_year: number | "Unknown";
+  gst: number | null;
+  hst: number | null;
+  qst: number | null;
+  pst: number | null;
+  rst: number | null;
+  category_status: string;
+  business_or_personal: "Business" | "Personal" | "Mixed Use";
+  business_use_percent: number | null;
+  business_amount: number | null;
+  personal_amount: number | null;
+  itc_status: string;
+  review_status: string;
+  notes: string;
 };
 type Receipt = {
   id: string;
@@ -64,7 +80,18 @@ const STATUS_LABELS: Record<string, string> = {
   exported: "Confirmed",
   failed: "Failed",
 };
+const TAX_TYPES = ["gst", "hst", "qst", "pst", "rst"] as const;
+const TAX_TYPE_LABELS: Record<(typeof TAX_TYPES)[number], string> = {
+  gst: "GST",
+  hst: "HST",
+  qst: "QST",
+  pst: "PST",
+  rst: "RST",
+};
+const USAGE_OPTIONS = ["Business", "Personal", "Mixed Use"] as const;
+const REVIEW_OPTIONS = ["Suggested", "Confirmed", "Needs Review"] as const;
 const RECEIPT_FILTERS_STORAGE_KEY = "mapletally.receiptFilters";
+const PLAN_LIMITS = { free: 20, paid: 200 } as const;
 const PRO_FEATURES = [
   "每月 200 张收据",
   "专属转发邮箱",
@@ -91,6 +118,9 @@ function matchesStatus(state: string, selected: string[]) {
       STATUS_OPTIONS.find(([option]) => option === value)?.[2].includes(state),
     )
   );
+}
+function hasTaxType(fields: Fields, taxType: string) {
+  return TAX_TYPES.includes(taxType as (typeof TAX_TYPES)[number]) && fields[taxType as (typeof TAX_TYPES)[number]] !== null;
 }
 async function api<T = any>(
   url: string,
@@ -364,8 +394,9 @@ function Auth({ onLogin }: { onLogin: () => Promise<void> }) {
             </button>
           </form>
           <p className="fine-print">
-            Your originals stay linked to your records. Review every receipt
-            before confirmation, and export your data whenever you need it.
+            Track your freelance expenses today. Prepare your Canadian tax
+            return with confidence next year. MapleTally organizes T1/T2125
+            material; it does not file for you.
           </p>
         </div>
       </section>
@@ -384,6 +415,13 @@ export default function App() {
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [taxYearFilter, setTaxYearFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [taxTypeFilter, setTaxTypeFilter] = useState("");
+  const [usageFilter, setUsageFilter] = useState("");
+  const [reviewFilter, setReviewFilter] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
   const [receiptPage, setReceiptPage] = useState(1);
   const [progress, setProgress] = useState<number | null>(null);
@@ -393,6 +431,9 @@ export default function App() {
   const [exportJobs, setExportJobs] = useState<
     { id: string; format: string; status: string; error: string | null }[]
   >([]);
+  const planLimit = me
+    ? PLAN_LIMITS[me.quota.plan === "paid" ? "paid" : "free"]
+    : PLAN_LIMITS.free;
   const [setupError, setSetupError] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
@@ -473,11 +514,25 @@ export default function App() {
       );
       setDateFrom(isDate(saved.dateFrom) ? saved.dateFrom : "");
       setDateTo(isDate(saved.dateTo) ? saved.dateTo : "");
+      setTaxYearFilter(typeof saved.taxYear === "string" ? saved.taxYear : "");
+      setMonthFilter(typeof saved.month === "string" ? saved.month : "");
+      setCategoryFilter(typeof saved.category === "string" ? saved.category : "");
+      setProvinceFilter(typeof saved.province === "string" ? saved.province : "");
+      setTaxTypeFilter(typeof saved.taxType === "string" && TAX_TYPES.includes(saved.taxType as (typeof TAX_TYPES)[number]) ? saved.taxType : "");
+      setUsageFilter(typeof saved.usage === "string" && USAGE_OPTIONS.includes(saved.usage as (typeof USAGE_OPTIONS)[number]) ? saved.usage : "");
+      setReviewFilter(typeof saved.reviewStatus === "string" && REVIEW_OPTIONS.includes(saved.reviewStatus as (typeof REVIEW_OPTIONS)[number]) ? saved.reviewStatus : "");
       setSearch(typeof saved.search === "string" ? saved.search : "");
     } catch {
       setStatusFilters([]);
       setDateFrom("");
       setDateTo("");
+      setTaxYearFilter("");
+      setMonthFilter("");
+      setCategoryFilter("");
+      setProvinceFilter("");
+      setTaxTypeFilter("");
+      setUsageFilter("");
+      setReviewFilter("");
       setSearch("");
     }
     setReceiptPage(1);
@@ -489,10 +544,10 @@ export default function App() {
     try {
       localStorage.setItem(
         `${RECEIPT_FILTERS_STORAGE_KEY}:${email}`,
-        JSON.stringify({ statuses: statusFilters, dateFrom, dateTo, search }),
+        JSON.stringify({ statuses: statusFilters, dateFrom, dateTo, taxYear: taxYearFilter, month: monthFilter, category: categoryFilter, province: provinceFilter, taxType: taxTypeFilter, usage: usageFilter, reviewStatus: reviewFilter, search }),
       );
     } catch {}
-  }, [me?.user.email, filterOwner, statusFilters, dateFrom, dateTo, search]);
+  }, [me?.user.email, filterOwner, statusFilters, dateFrom, dateTo, taxYearFilter, monthFilter, categoryFilter, provinceFilter, taxTypeFilter, usageFilter, reviewFilter, search]);
   async function act(fn: () => Promise<void>) {
     setError("");
     setActionBusy(true);
@@ -609,6 +664,11 @@ export default function App() {
   const confirmed = rows.filter(isConfirmed);
   const inProgress = rows.filter((r) => IN_PROGRESS_STATES.has(r.state));
   const failed = rows.filter((r) => r.state === "failed");
+  const taxYears = Array.from(
+    new Set(rows.map((r) => String(r.fields.tax_year)).filter((year) => year !== "Unknown")),
+  ).sort((a, b) => Number(b) - Number(a));
+  const categories = Array.from(new Set(rows.map((r) => r.fields.category))).sort();
+  const provinces = Array.from(new Set(rows.map((r) => r.fields.province).filter(Boolean))).sort();
   const filteredRows = rows.filter(
     (r) =>
       matchesStatus(r.state, statusFilters) &&
@@ -618,10 +678,17 @@ export default function App() {
       ((!dateFrom && !dateTo) ||
         (!!r.fields.date &&
           (!dateFrom || r.fields.date >= dateFrom) &&
-          (!dateTo || r.fields.date <= dateTo))),
+          (!dateTo || r.fields.date <= dateTo))) &&
+      (!taxYearFilter || String(r.fields.tax_year) === taxYearFilter) &&
+      (!monthFilter || r.fields.date.slice(5, 7) === monthFilter) &&
+      (!categoryFilter || r.fields.category === categoryFilter) &&
+      (!provinceFilter || r.fields.province === provinceFilter) &&
+      (!taxTypeFilter || hasTaxType(r.fields, taxTypeFilter)) &&
+      (!usageFilter || r.fields.business_or_personal === usageFilter) &&
+      (!reviewFilter || r.fields.review_status === reviewFilter),
   );
   const hasActiveFilters =
-    statusFilters.length > 0 || !!dateFrom || !!dateTo || !!search;
+    statusFilters.length > 0 || !!dateFrom || !!dateTo || !!taxYearFilter || !!monthFilter || !!categoryFilter || !!provinceFilter || !!taxTypeFilter || !!usageFilter || !!reviewFilter || !!search;
   const totalReceiptPages = Math.max(
     1,
     Math.ceil(filteredRows.length / RECEIPTS_PER_PAGE),
@@ -670,13 +737,17 @@ export default function App() {
               <Icon name="leaf" size={17} />
             </div>
             <p>
-              {me.quota.used} of {me.quota.limit} receipts · {me.quota.period}
+              {me.quota.used} of {planLimit} receipts · this month
               {me.quota.reserved > 0 && ` (${me.quota.reserved} uploading)`}
             </p>
+            <small className="allowance-note">
+              Counts successful processing only. Failed or duplicate receipts do
+              not use your allowance; deleting a receipt does not restore it.
+            </small>
             <div className="meter">
               <span
                 style={{
-                  width: `${Math.min(100, ((me.quota.used + me.quota.reserved) / me.quota.limit) * 100)}%`,
+                  width: `${Math.min(100, ((me.quota.used + me.quota.reserved) / planLimit) * 100)}%`,
                 }}
               />
             </div>
@@ -776,7 +847,7 @@ export default function App() {
                 <div className="receipt-overview">
                   <span className="eyebrow">A CLEARER PICTURE</span>
                   <h1>Your receipts</h1>
-                  <p>Capture, review, and keep every expense in one place.</p>
+                  <p>Prepare Canadian self-employed T1/T2125 records from every expense.</p>
                   <button
                     className="review-summary"
                     disabled={needsReview.length === 0}
@@ -784,6 +855,13 @@ export default function App() {
                       setStatusFilters(Array.from(REVIEW_READY_STATES));
                       setDateFrom("");
                       setDateTo("");
+                      setTaxYearFilter("");
+                      setMonthFilter("");
+                      setCategoryFilter("");
+                      setProvinceFilter("");
+                      setTaxTypeFilter("");
+                      setUsageFilter("");
+                      setReviewFilter("");
                       setSearch("");
                       setReceiptPage(1);
                     }}
@@ -891,6 +969,58 @@ export default function App() {
                         </div>
                       </details>
                     </div>
+                    <label className="filter-select">
+                      <span>Tax year</span>
+                      <select value={taxYearFilter} onChange={(e) => { setTaxYearFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any year</option>
+                        {taxYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </label>
+                    <label className="filter-select">
+                      <span>Month</span>
+                      <select value={monthFilter} onChange={(e) => { setMonthFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any month</option>
+                        {Array.from({ length: 12 }, (_, index) => {
+                          const month = String(index + 1).padStart(2, "0");
+                          return <option key={month} value={month}>{month}</option>;
+                        })}
+                      </select>
+                    </label>
+                    <label className="filter-select">
+                      <span>Category</span>
+                      <select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any category</option>
+                        {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                      </select>
+                    </label>
+                    <label className="filter-select">
+                      <span>Province</span>
+                      <select value={provinceFilter} onChange={(e) => { setProvinceFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any province</option>
+                        {provinces.map((province) => <option key={province} value={province}>{province}</option>)}
+                      </select>
+                    </label>
+                    <label className="filter-select">
+                      <span>Tax type</span>
+                      <select value={taxTypeFilter} onChange={(e) => { setTaxTypeFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any tax</option>
+                        {TAX_TYPES.map((taxType) => <option key={taxType} value={taxType}>{TAX_TYPE_LABELS[taxType]}</option>)}
+                      </select>
+                    </label>
+                    <label className="filter-select">
+                      <span>Usage</span>
+                      <select value={usageFilter} onChange={(e) => { setUsageFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any usage</option>
+                        {USAGE_OPTIONS.map((usage) => <option key={usage} value={usage}>{usage}</option>)}
+                      </select>
+                    </label>
+                    <label className="filter-select">
+                      <span>Review</span>
+                      <select value={reviewFilter} onChange={(e) => { setReviewFilter(e.target.value); setReceiptPage(1); }}>
+                        <option value="">Any review</option>
+                        {REVIEW_OPTIONS.map((review) => <option key={review} value={review}>{review}</option>)}
+                      </select>
+                    </label>
                     <div className="date-range" role="group" aria-label="Receipt date range">
                       <label>
                         <span>From</span>
@@ -939,6 +1069,13 @@ export default function App() {
                           setStatusFilters([]);
                           setDateFrom("");
                           setDateTo("");
+                          setTaxYearFilter("");
+                          setMonthFilter("");
+                          setCategoryFilter("");
+                          setProvinceFilter("");
+                          setTaxTypeFilter("");
+                          setUsageFilter("");
+                          setReviewFilter("");
                           setSearch("");
                           setReceiptPage(1);
                           statusDetails.current?.removeAttribute("open");
@@ -1240,7 +1377,7 @@ export default function App() {
           <span>
             MapleTally <span>·</span> A little less paperwork.
           </span>
-          <span>Made for independent business.</span>
+                <span>Made for Canadian independent business.</span>
         </footer>
       </div>
     </div>
@@ -1447,6 +1584,24 @@ function Review({
                   }
                 />
               </label>
+              <label>
+                {fieldLabel("province", "Province or territory")}
+                <input
+                  value={fields.province}
+                  maxLength={40}
+                  placeholder="ON"
+                  onChange={(e) => setField("province", e.target.value.toUpperCase())}
+                />
+              </label>
+              <label>
+                {fieldLabel("payment_method", "Payment method")}
+                <input
+                  value={fields.payment_method}
+                  maxLength={80}
+                  placeholder="Credit card"
+                  onChange={(e) => setField("payment_method", e.target.value)}
+                />
+              </label>
             </div>
             <label>
               {fieldLabel("category", "Category")}
@@ -1458,12 +1613,20 @@ function Review({
               />
               <datalist id="categories">
                 {[
-                  "Meals & entertainment",
-                  "Office supplies",
+                  "Advertising",
+                  "Meals and Entertainment",
+                  "Motor Vehicle Expenses",
+                  "Office Expenses",
+                  "Office Supplies",
+                  "Professional Fees",
+                  "Insurance",
+                  "Rent",
+                  "Utilities",
+                  "Bank Charges",
+                  "Delivery/Freight",
+                  "Capital Assets/CCA Review",
+                  "Other Expenses",
                   "Travel",
-                  "Software & services",
-                  "Vehicle",
-                  "Professional services",
                   "Uncategorized",
                 ].map((c) => (
                   <option key={c}>{c}</option>
@@ -1471,13 +1634,11 @@ function Review({
               </datalist>
             </label>
             <div className="amount-fields">
-              {(["subtotal", "tax", "tip", "total"] as const).map((k) => (
+              {(["subtotal", "gst", "hst", "qst", "pst", "rst", "tip", "total"] as const).map((k) => (
                 <label key={k}>
                   {fieldLabel(
                     k,
-                    k === "tax"
-                      ? "Sales tax (combined)"
-                      : k[0].toUpperCase() + k.slice(1),
+                    k === "total" ? "Total" : k === "subtotal" ? "Subtotal" : k.toUpperCase(),
                   )}
                   <div className="amount-input">
                     <span>{fields.currency}</span>
@@ -1488,9 +1649,7 @@ function Review({
                       max="1000000"
                       required={k === "total"}
                       aria-label={
-                        k === "tax"
-                          ? "Sales tax"
-                          : k[0].toUpperCase() + k.slice(1)
+                        k.toUpperCase()
                       }
                       value={
                         fields[k] === null
@@ -1513,6 +1672,62 @@ function Review({
                 </label>
               ))}
             </div>
+            <div className="form-grid">
+              <label>
+                {fieldLabel("business_or_personal", "Use")}
+                <select
+                  value={fields.business_or_personal}
+                  onChange={(e) => setField("business_or_personal", e.target.value as Fields["business_or_personal"])}
+                >
+                  <option>Business</option>
+                  <option>Personal</option>
+                  <option>Mixed Use</option>
+                </select>
+              </label>
+              <label>
+                {fieldLabel("business_use_percent", "Business-use percentage")}
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  disabled={fields.business_or_personal !== "Mixed Use"}
+                  value={fields.business_use_percent ?? ""}
+                  placeholder={fields.business_or_personal === "Mixed Use" ? "Required" : "Not needed"}
+                  onChange={(e) => setField("business_use_percent", e.target.value === "" ? null : Number(e.target.value))}
+                />
+              </label>
+              <label>
+                {fieldLabel("itc_status", "GST/HST/QST review")}
+                <select value={fields.itc_status} onChange={(e) => setField("itc_status", e.target.value)}>
+                  <option>Unknown</option>
+                  <option>Possible</option>
+                  <option>Not Indicated</option>
+                  <option>Needs Review</option>
+                </select>
+              </label>
+              <label>
+                {fieldLabel("category_status", "Category status")}
+                <select value={fields.category_status} onChange={(e) => setField("category_status", e.target.value)}>
+                  <option>Suggested</option>
+                  <option>Confirmed</option>
+                  <option>Needs Review</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              {fieldLabel("notes", "Notes")}
+              <textarea
+                value={fields.notes}
+                maxLength={2000}
+                rows={3}
+                placeholder="Add context for yourself or your accountant"
+                onChange={(e) => setField("notes", e.target.value)}
+              />
+            </label>
+            <p className="fine-print">
+              Business and personal portions are organizational estimates. Confirm CRA rules or ask an accountant before claiming expenses, ITCs, vehicle costs, meals, home office, or CCA.
+            </p>
             {receipt.duplicate_of && (
               <label className="checkbox">
                 <input
@@ -1678,6 +1893,11 @@ function Settings({
           <h2>{me.quota.plan === "paid" ? "Pro plan" : "Free plan"}</h2>
           <p>
             {me.quota.used} of {me.quota.limit} receipts used this month.
+          </p>
+          <p className="quota-policy">
+            Your allowance is a monthly count of successful processing. Failed
+            and duplicate receipts are not charged. Deleting a receipt does not
+            return a used slot.
           </p>
           <div className="plan-grid">
             <div className={me.quota.plan === "free" ? "plan active" : "plan"}>

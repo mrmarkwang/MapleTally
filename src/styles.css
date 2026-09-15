@@ -511,6 +511,13 @@ nav button:hover {
   font-size: 10px;
   margin: 9px 0;
 }
+.allowance-note {
+  display: block;
+  color: #7b8772;
+  font-size: 9px;
+  line-height: 1.45;
+  margin: -3px 0 9px;
+}
 .meter {
   height: 4px;
   border-radius: 3px;
@@ -760,6 +767,27 @@ nav button:hover {
   font-weight: 650;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+}
+.filter-select {
+  gap: 2px;
+  margin: 0;
+  color: #7b8479;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.filter-select select {
+  width: 112px;
+  min-height: 34px;
+  padding: 6px 7px;
+  border: 1px solid #e9ece3;
+  border-radius: 6px;
+  background: #fdfefa;
+  color: #586352;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .status-filter details {
   position: relative;
@@ -1761,6 +1789,13 @@ nav button:hover {
     width: 100%;
   }
   .status-filter {
+    width: 100%;
+  }
+  .filter-select {
+    flex: 1 1 30%;
+    min-width: 112px;
+  }
+  .filter-select select {
     width: 100%;
   }
   .status-filter details,
