@@ -18,7 +18,14 @@ const confirmationRepair = readFileSync(
   ),
   "utf8",
 );
-const migration = `${initialMigration}\n${confirmationRepair}`;
+const staleUploadRepair = readFileSync(
+  new URL(
+    "../supabase/migrations/202609160001_reclaim_stale_uploads.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const migration = `${initialMigration}\n${confirmationRepair}\n${staleUploadRepair}`;
 const legacyMigration = initialMigration
   .replaceAll("confirmed_at", "approved_at")
   .replaceAll("confirm_receipt", "approve_receipt")
@@ -309,6 +316,22 @@ test("upload reservations enforce quota and hash deduplication only consumes one
     "update public.uploads set expires=now()-interval '1 second' where receipt_id is null",
   );
   assert.equal((await call(db, "quota", [w.id])).canUpload, true);
+});
+test("quota reclaims stale unfinalized upload reservations", async (t) => {
+  const { db, w } = await setup(t);
+  for (let n = 0; n < 25; n++)
+    await call(db, "reserve_upload", [w.id, `stale-${n}`, "image/png"]);
+  await db.query(
+    "update public.uploads set created=now()-interval '11 minutes'",
+  );
+  const quota = await call(db, "quota", [w.id]);
+  assert.equal(quota.reserved, 0);
+  assert.equal(quota.canUpload, true);
+  assert.equal(
+    (await db.query<any>("select count(*) from public.storage_deletions"))
+      .rows[0].count,
+    50,
+  );
 });
 test("upload cancellation preserves finalized originals and delays abandoned-key cleanup", async (t) => {
   const { db, w } = await setup(t);

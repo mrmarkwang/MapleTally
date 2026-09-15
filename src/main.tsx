@@ -32,6 +32,7 @@ type Me = {
   quota: {
     plan: string;
     used: number;
+    reserved: number;
     limit: number;
     period: string;
     canUpload: boolean;
@@ -47,15 +48,22 @@ const RECEIPTS_PER_PAGE = 10;
 const CONFIRMED_STATES = new Set(["confirmed", "exported"]);
 const REVIEW_READY_STATES = new Set(["needs_review", "duplicate_candidate"]);
 const IN_PROGRESS_STATES = new Set(["captured", "processing"]);
-const STATUS_OPTIONS = [
-  ["captured", "Captured"],
-  ["processing", "Processing"],
-  ["needs_review", "Needs review"],
-  ["duplicate_candidate", "Possible duplicate"],
-  ["confirmed", "Confirmed"],
-  ["exported", "Exported"],
-  ["failed", "Failed"],
+type StatusOption = readonly [string, string, readonly string[]];
+const STATUS_OPTIONS: StatusOption[] = [
+  ["processing", "Processing", ["captured", "processing"]],
+  ["needs_review", "Needs review", ["needs_review", "duplicate_candidate"]],
+  ["confirmed", "Confirmed", ["confirmed", "exported"]],
+  ["failed", "Failed", ["failed"]],
 ];
+const STATUS_LABELS: Record<string, string> = {
+  captured: "Processing",
+  processing: "Processing",
+  needs_review: "Needs review",
+  duplicate_candidate: "Needs review",
+  confirmed: "Confirmed",
+  exported: "Confirmed",
+  failed: "Failed",
+};
 const RECEIPT_FILTERS_STORAGE_KEY = "mapletally.receiptFilters";
 
 function isConfirmed(receipt: Receipt) {
@@ -64,6 +72,14 @@ function isConfirmed(receipt: Receipt) {
 
 function isReviewReady(receipt: Receipt) {
   return REVIEW_READY_STATES.has(receipt.state);
+}
+function matchesStatus(state: string, selected: string[]) {
+  return (
+    selected.length === 0 ||
+    selected.some((value) =>
+      STATUS_OPTIONS.find(([option]) => option === value)?.[2].includes(state),
+    )
+  );
 }
 async function api<T = any>(
   url: string,
@@ -165,7 +181,7 @@ function Status({ value }: { value: string }) {
   return (
     <span className={`status ${value}`}>
       <span />
-      {value.replaceAll("_", " ")}
+      {STATUS_LABELS[value] || value.replaceAll("_", " ")}
     </span>
   );
 }
@@ -545,9 +561,12 @@ export default function App() {
       if (camera.current) camera.current.value = "";
     }
   }
-  async function download(format: "csv" | "pdf" | "zip") {
+  async function download(
+    format: "csv" | "pdf" | "zip",
+    receiptIds?: string[],
+  ) {
     await act(async () => {
-      await api("/exports", "POST", { format });
+      await api("/exports", "POST", { format, receiptIds });
       setToast(
         "Export queued. You can leave this page and download it when it is ready.",
       );
@@ -581,7 +600,7 @@ export default function App() {
   const failed = rows.filter((r) => r.state === "failed");
   const filteredRows = rows.filter(
     (r) =>
-      (statusFilters.length === 0 || statusFilters.includes(r.state)) &&
+      matchesStatus(r.state, statusFilters) &&
       `${r.fields.merchant} ${r.filename} ${r.fields.category}`
         .toLowerCase()
         .includes(search.toLowerCase()) &&
@@ -643,11 +662,12 @@ export default function App() {
             </div>
             <p>
               {me.quota.used} of {me.quota.limit} receipts · {me.quota.period}
+              {me.quota.reserved > 0 && ` (${me.quota.reserved} uploading)`}
             </p>
             <div className="meter">
               <span
                 style={{
-                  width: `${Math.min(100, (me.quota.used / me.quota.limit) * 100)}%`,
+                  width: `${Math.min(100, ((me.quota.used + me.quota.reserved) / me.quota.limit) * 100)}%`,
                 }}
               />
             </div>
@@ -778,16 +798,18 @@ export default function App() {
                 </div>
                 <div className="capture-actions">
                   <button
+                    type="button"
                     className="button primary"
-                    disabled={progress !== null || !me.quota.canUpload}
+                    disabled={progress !== null}
                     onClick={() => input.current?.click()}
                   >
                     <Icon name="plus" size={18} />
                     Add receipt
                   </button>
                   <button
+                    type="button"
                     className="text-button camera-button"
-                    disabled={progress !== null || !me.quota.canUpload}
+                    disabled={progress !== null}
                     onClick={() => camera.current?.click()}
                   >
                     Take a photo
@@ -920,6 +942,19 @@ export default function App() {
                       >
                         <Icon name="close" size={15} />
                         Reset filters
+                      </button>
+                    )}
+                    {hasActiveFilters && (
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={actionBusy || !filteredRows.length}
+                        onClick={() =>
+                          download("csv", filteredRows.map((r) => r.id))
+                        }
+                      >
+                        {actionBusy ? "Preparing…" : "Export filtered CSV"}
+                        <Icon name="export" size={16} />
                       </button>
                     )}
                   </div>

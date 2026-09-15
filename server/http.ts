@@ -371,9 +371,16 @@ async function dispatch(req: NextRequest): Promise<Response> {
       filename: input.filename.replaceAll(/[\\/]/g, "_"),
       mime: input.mime,
     });
-    const url = await storage.uploadLink(`${w.id}/${u.id}`);
-    await rpc(db, "activate_upload", { w: w.id, upload_id: u.id });
-    return json({ id: u.id, url }, 201);
+    try {
+      const url = await storage.uploadLink(`${w.id}/${u.id}`);
+      await rpc(db, "activate_upload", { w: w.id, upload_id: u.id });
+      return json({ id: u.id, url }, 201);
+    } catch (error) {
+      await rpc(db, "cancel_upload", { w: w.id, upload_id: u.id }).catch(
+        () => undefined,
+      );
+      throw error;
+    }
   }
   const upload = path.match(/^\/uploads\/([^/]+)(?:\/(complete))?$/);
   if (upload && method === "POST" && upload[2]) {
@@ -460,12 +467,16 @@ async function dispatch(req: NextRequest): Promise<Response> {
     }
   }
   if (path === "/exports" && method === "POST") {
-    const { format } = z
-      .object({ format: z.enum(["csv", "pdf", "zip"]) })
+    const { format, receiptIds } = z
+      .object({
+        format: z.enum(["csv", "pdf", "zip"]),
+        receiptIds: z.array(z.string().uuid()).optional(),
+      })
       .parse(await body(req));
     const id = await rpc(db, "create_export", {
       w: w.id,
       output_format: format,
+      receipt_ids: receiptIds || null,
     });
     kickWorker(db);
     return json({ id, status: "queued" }, 202);
