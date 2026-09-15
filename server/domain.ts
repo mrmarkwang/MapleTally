@@ -85,9 +85,8 @@ export function allocation(total: number | null, usage: Fields["business_or_pers
   const businessAmount = Math.round((total * businessPercent) / 100);
   return { business_amount: businessAmount, personal_amount: total - businessAmount };
 }
-export function normalizeFields(input: unknown): Fields {
-  const value = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const categoryAliases: Record<string, (typeof CATEGORIES)[number]> = {
+function normalizeCategory(value: unknown): (typeof CATEGORIES)[number] {
+  const aliases: Record<string, (typeof CATEGORIES)[number]> = {
     "office supplies": "Office Supplies",
     "office expenses": "Office Expenses",
     "meals & entertainment": "Meals and Entertainment",
@@ -97,11 +96,17 @@ export function normalizeFields(input: unknown): Fields {
     vehicle: "Motor Vehicle Expenses",
     uncategorized: "Uncategorized",
   };
-  const rawCategory = typeof value.category === "string" ? value.category.trim() : "";
-  const category = categoryAliases[rawCategory.toLowerCase()] || rawCategory || "Uncategorized";
+  const category = typeof value === "string" ? value.trim() : "";
+  const normalized = aliases[category.toLowerCase()] || category;
+  return CATEGORIES.includes(normalized as (typeof CATEGORIES)[number])
+    ? normalized as (typeof CATEGORIES)[number]
+    : "Uncategorized";
+}
+export function normalizeFields(input: unknown): Fields {
+  const value = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const parsed = rawFieldsSchema.parse({
     ...value,
-    category,
+    category: normalizeCategory(value.category),
     tax: value.tax ?? null,
     gst: value.gst ?? null,
     hst: value.hst ?? null,
@@ -123,7 +128,7 @@ export const fieldsSchema = z.preprocess(
     const value = input && typeof input === "object" ? input as Record<string, unknown> : {};
     return {
       ...value,
-      category: value.category || "Uncategorized",
+      category: normalizeCategory(value.category),
       tax: value.tax ?? null,
       gst: value.gst ?? null,
       hst: value.hst ?? null,

@@ -472,7 +472,7 @@ export default function App() {
       () => {
         poll();
       },
-      hasPendingWork ? 4000 : 30000,
+      hasPendingWork ? 2000 : 30000,
     );
     document.addEventListener("visibilitychange", poll);
     return () => {
@@ -971,14 +971,14 @@ export default function App() {
                     </div>
                     <label className="filter-select">
                       <span>Tax year</span>
-                      <select value={taxYearFilter} onChange={(e) => { setTaxYearFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Tax year filter" value={taxYearFilter} onChange={(e) => { setTaxYearFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any year</option>
                         {taxYears.map((year) => <option key={year} value={year}>{year}</option>)}
                       </select>
                     </label>
                     <label className="filter-select">
                       <span>Month</span>
-                      <select value={monthFilter} onChange={(e) => { setMonthFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Month filter" value={monthFilter} onChange={(e) => { setMonthFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any month</option>
                         {Array.from({ length: 12 }, (_, index) => {
                           const month = String(index + 1).padStart(2, "0");
@@ -988,35 +988,35 @@ export default function App() {
                     </label>
                     <label className="filter-select">
                       <span>Category</span>
-                      <select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Category filter" value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any category</option>
                         {categories.map((category) => <option key={category} value={category}>{category}</option>)}
                       </select>
                     </label>
                     <label className="filter-select">
                       <span>Province</span>
-                      <select value={provinceFilter} onChange={(e) => { setProvinceFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Province filter" value={provinceFilter} onChange={(e) => { setProvinceFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any province</option>
                         {provinces.map((province) => <option key={province} value={province}>{province}</option>)}
                       </select>
                     </label>
                     <label className="filter-select">
                       <span>Tax type</span>
-                      <select value={taxTypeFilter} onChange={(e) => { setTaxTypeFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Tax type filter" value={taxTypeFilter} onChange={(e) => { setTaxTypeFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any tax</option>
                         {TAX_TYPES.map((taxType) => <option key={taxType} value={taxType}>{TAX_TYPE_LABELS[taxType]}</option>)}
                       </select>
                     </label>
                     <label className="filter-select">
                       <span>Usage</span>
-                      <select value={usageFilter} onChange={(e) => { setUsageFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Usage filter" value={usageFilter} onChange={(e) => { setUsageFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any usage</option>
                         {USAGE_OPTIONS.map((usage) => <option key={usage} value={usage}>{usage}</option>)}
                       </select>
                     </label>
                     <label className="filter-select">
                       <span>Review</span>
-                      <select value={reviewFilter} onChange={(e) => { setReviewFilter(e.target.value); setReceiptPage(1); }}>
+                      <select aria-label="Review status filter" value={reviewFilter} onChange={(e) => { setReviewFilter(e.target.value); setReceiptPage(1); }}>
                         <option value="">Any review</option>
                         {REVIEW_OPTIONS.map((review) => <option key={review} value={review}>{review}</option>)}
                       </select>
@@ -1649,7 +1649,7 @@ function Review({
                       max="1000000"
                       required={k === "total"}
                       aria-label={
-                        k.toUpperCase()
+                        k === "total" ? "Total" : k === "subtotal" ? "Subtotal" : k.toUpperCase()
                       }
                       value={
                         fields[k] === null

@@ -82,7 +82,7 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
   await expect(page.getByText('1–9 of 9 receipts')).toBeVisible();
 
   await page.getByLabel('Receipt status').click();
-  await page.getByLabel('Needs review').check();
+  await page.locator('.status-menu').getByRole('checkbox', { name: 'Needs review' }).check();
   await expect(page.getByRole('button', { name: /Merchant 9/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Merchant 6/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Merchant 3/ })).toBeVisible();
@@ -90,7 +90,7 @@ test('receipt list filters by an inclusive date range and paginates', async ({ p
   await expect(page.getByText('1–3 of 3 receipts')).toBeVisible();
   await expect(page.getByText('3 receipts', { exact: true })).toBeVisible();
 
-  await page.getByLabel('Confirmed').check();
+  await page.locator('.status-menu').getByRole('checkbox', { name: 'Confirmed' }).check();
   await expect(page.getByRole('button', { name: /Merchant 11/ })).toBeVisible();
   await expect(page.getByText('9 receipts', { exact: true })).toBeVisible();
   await page.getByRole('heading', { name: 'Your receipts', exact: true }).click();
@@ -172,15 +172,15 @@ test('Next receipt UI: direct upload, correction and queued export contracts', a
     expect(detailsBox!.y).toBeLessThan(originalBox!.y);
   }
   await page.getByRole('button', { name: 'Back to receipts' }).click();
-  await expect(page.getByRole('button', { name: /cafe.png/ })).toContainText('failed', { timeout: 15000 });
+  await expect(page.getByRole('button', { name: /cafe.png/ }).locator('.status')).toHaveText(/failed/i, { timeout: 15000 });
   await expect(page.getByRole('button', { name: 'No receipts need review', exact: true })).toBeDisabled();
   await expect(page.getByText('1–1 of 1 receipt', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /cafe.png/ }).click();
   await expect(page.getByText('Automatic extraction is not configured.', { exact: false })).toBeVisible();
   await page.getByLabel('Merchant', { exact: true }).fill('Maple Café');
   await page.getByLabel('Receipt date').fill('2026-09-12');
-  await page.getByLabel('Subtotal', { exact: true }).fill('10');
-  await page.getByLabel('Sales tax', { exact: true }).fill('1.30');
+  await page.getByRole('spinbutton', { name: /subtotal/i }).fill('10');
+  await page.getByLabel('HST', { exact: true }).fill('1.30');
   await page.getByLabel('Tip', { exact: true }).fill('2');
   await page.getByLabel('Total', { exact: true }).fill('13.30');
   await expect(page.getByRole('button', { name: 'Confirm receipt', exact: true })).toBeDisabled();
@@ -232,8 +232,8 @@ test('open receipt updates automatically when background extraction completes', 
   const extracted = () => ({
     ...captured(),
     state: 'needs_review',
-    fields: {merchant:'The Home Depot',date:'2026-09-12',subtotal:1125,tax:146,tip:null,total:1271,currency:'CAD',category:'Office supplies'},
-    original: {merchant:'The Home Depot',date:'2026-09-12',subtotal:1125,tax:146,tip:null,total:1271,currency:'CAD',category:'Office supplies'},
+    fields: {merchant:'The Home Depot',date:'2026-09-12',subtotal:1125,tax:146,gst:null,hst:146,qst:null,pst:null,rst:null,tip:null,total:1271,currency:'CAD',category:'Office supplies'},
+    original: {merchant:'The Home Depot',date:'2026-09-12',subtotal:1125,tax:146,gst:null,hst:146,qst:null,pst:null,rst:null,tip:null,total:1271,currency:'CAD',category:'Office supplies'},
     confidence: {merchant:0.99,date:0.62,total:0.98},
     warnings: ['Some extracted fields have low confidence. Check them against the original.'],
     version: 2,
@@ -277,12 +277,12 @@ test('open receipt updates automatically when background extraction completes', 
   await expect(page.getByRole('heading', {name:'Review receipt',exact:true})).toBeVisible();
   await expect(page.getByLabel('Merchant', {exact:true})).toHaveValue('The Home Depot', {timeout:10000});
   await expect(page.getByLabel('Receipt date')).toHaveValue('2026-09-12');
-  await expect(page.getByLabel('Subtotal', {exact:true})).toHaveValue('11.25');
-  await expect(page.getByLabel('Sales tax', {exact:true})).toHaveValue('1.46');
+  await expect(page.getByRole('spinbutton', { name: /subtotal/i })).toHaveValue('11.25');
+  await expect(page.getByLabel('HST', {exact:true})).toHaveValue('1.46');
   await expect(page.getByLabel('Total', {exact:true})).toHaveValue('12.71');
   await expect(page.getByText('Check this field · 62% confidence', {exact:true})).toBeVisible();
   await expect(page.getByText('View the original extraction', {exact:true})).toHaveCount(0);
-  await expect(page.locator('.page-heading .status')).toHaveText('needs review');
+  await expect(page.locator('.page-heading .status')).toHaveText(/needs review/i);
 });
 
 test('Supabase email confirmation is shown before entering the workspace', async ({ page }) => {
@@ -333,8 +333,8 @@ test('manual edits survive while untouched fields update from queued extraction'
   await page.locator('input[type=file]').first().setInputFiles({ name: 'cafe.png', mimeType: 'image/png', buffer: Buffer.from('receipt') });
   await expect(page.getByRole('heading', { name: 'Review receipt', exact: true })).toBeVisible();
   await page.getByLabel('Merchant', { exact: true }).fill('My correction');
-  await expect(page.locator('.page-heading .status')).toHaveText('needs review', {timeout:10000});
+  await expect(page.locator('.page-heading .status')).toHaveText(/needs review/i, {timeout:10000});
   await expect(page.getByLabel('Merchant', { exact: true })).toHaveValue('My correction');
   await expect(page.getByLabel('Receipt date')).toHaveValue('2026-09-12');
-  await expect(page.getByLabel('Total', { exact: true })).toHaveValue('13.3');
+  await expect(page.getByRole('spinbutton', { name: /total/i })).toHaveValue('13.3');
 });

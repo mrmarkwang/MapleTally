@@ -36,6 +36,8 @@ test('tax-ready normalization keeps legacy tax type unknown and derives tax year
   assert.equal(fields.hst, null);
   assert.equal(fields.tax_year, 2025);
   assert.equal(normalizeFields({ ...emptyFields(), date: '' }).tax_year, 'Unknown');
+  assert.equal(fieldsSchema.parse({ ...fields, category: 'Office supplies' }).category, 'Office Supplies');
+  assert.equal(normalizeFields({ ...fields, category: 'hardware' }).category, 'Uncategorized');
 });
 test('Mixed Use allocation preserves total cents and requires an explicit percentage', () => {
   assert.deepEqual(allocation(1000, 'Mixed Use', 65), { business_amount: 650, personal_amount: 350 });
