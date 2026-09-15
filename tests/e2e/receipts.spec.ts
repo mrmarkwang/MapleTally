@@ -234,7 +234,8 @@ test('open receipt updates automatically when background extraction completes', 
     state: 'needs_review',
     fields: {merchant:'The Home Depot',date:'2026-09-12',subtotal:1125,tax:146,tip:null,total:1271,currency:'CAD',category:'Office supplies'},
     original: {merchant:'The Home Depot',date:'2026-09-12',subtotal:1125,tax:146,tip:null,total:1271,currency:'CAD',category:'Office supplies'},
-    confidence: {merchant:0.99,total:0.98},
+    confidence: {merchant:0.99,date:0.62,total:0.98},
+    warnings: ['Some extracted fields have low confidence. Check them against the original.'],
     version: 2,
   });
   await page.route('**/api/**', async route => {
@@ -279,6 +280,8 @@ test('open receipt updates automatically when background extraction completes', 
   await expect(page.getByLabel('Subtotal', {exact:true})).toHaveValue('11.25');
   await expect(page.getByLabel('Sales tax', {exact:true})).toHaveValue('1.46');
   await expect(page.getByLabel('Total', {exact:true})).toHaveValue('12.71');
+  await expect(page.getByText('Check this field · 62% confidence', {exact:true})).toBeVisible();
+  await expect(page.getByText('View the original extraction', {exact:true})).toHaveCount(0);
   await expect(page.locator('.page-heading .status')).toHaveText('needs review');
 });
 

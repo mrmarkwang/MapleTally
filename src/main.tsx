@@ -1239,6 +1239,19 @@ function Review({
       .catch((e) => setError(e.message));
   }, [receipt.id]);
   const dirty = JSON.stringify(fields) !== JSON.stringify(receipt.fields);
+  function fieldLabel(key: keyof Fields, label: string) {
+    const confidence = receipt.confidence[key];
+    return (
+      <span className="field-label">
+        <span>{label}</span>
+        {confidence !== undefined && confidence < 0.8 && (
+          <small className="low-confidence">
+            Check this field · {Math.round(confidence * 100)}% confidence
+          </small>
+        )}
+      </span>
+    );
+  }
   function setField<K extends keyof Fields>(key: K, value: Fields[K]) {
     editedFields.current.add(key);
     setFields((current) => ({ ...current, [key]: value }));
@@ -1352,7 +1365,7 @@ function Review({
             }}
           >
             <label>
-              Merchant
+              {fieldLabel("merchant", "Merchant")}
               <input
                 required
                 value={fields.merchant}
@@ -1363,7 +1376,7 @@ function Review({
             </label>
             <div className="form-grid">
               <label>
-                Receipt date
+                {fieldLabel("date", "Receipt date")}
                 <input
                   type="date"
                   required
@@ -1372,7 +1385,7 @@ function Review({
                 />
               </label>
               <label>
-                Currency
+                {fieldLabel("currency", "Currency")}
                 <input
                   required
                   pattern="[A-Z]{3}"
@@ -1385,7 +1398,7 @@ function Review({
               </label>
             </div>
             <label>
-              Category
+              {fieldLabel("category", "Category")}
               <input
                 list="categories"
                 value={fields.category}
@@ -1409,9 +1422,12 @@ function Review({
             <div className="amount-fields">
               {(["subtotal", "tax", "tip", "total"] as const).map((k) => (
                 <label key={k}>
-                  {k === "tax"
-                    ? "Sales tax (combined)"
-                    : k[0].toUpperCase() + k.slice(1)}
+                  {fieldLabel(
+                    k,
+                    k === "tax"
+                      ? "Sales tax (combined)"
+                      : k[0].toUpperCase() + k.slice(1),
+                  )}
                   <div className="amount-input">
                     <span>{fields.currency}</span>
                     <input
@@ -1506,7 +1522,7 @@ function Review({
               </small>
             )}
           </form>
-          {receipt.original && (
+          {process.env.NODE_ENV === "development" && receipt.original && (
             <details className="extraction-details">
               <summary>View the original extraction</summary>
               <dl>
